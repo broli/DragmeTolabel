@@ -21,6 +21,7 @@ from numpy.typing import NDArray
 
 from labelme import __version__
 
+from . import _fs
 from . import _utils
 from ._shape import ShapeType
 from ._utils.shape import ShapeDict
@@ -362,8 +363,12 @@ def write_label_file(
             if key in _RESERVED_TOP_LEVEL_KEYS:
                 raise ValueError(f"reserved key in other_data: {key!r}")
             payload[key] = value
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        _fs.atomic_write(
+            Path(filename),
+            lambda f: json.dump(payload, f, ensure_ascii=False, indent=2),
+            preserve_mode=True,
+        )
     except (OSError, TypeError, ValueError) as e:
         raise LabelFileWriteError(f"failed to write {filename!r}: {e}") from e
 
