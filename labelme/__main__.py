@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import AnyStr
 from typing import Final
 
+import onnxruntime  # noqa: F401  # load DLLs before PySide6 on Windows
 from loguru import logger
 from PySide6 import QtCore
 from PySide6 import QtWidgets
