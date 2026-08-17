@@ -346,7 +346,7 @@ def test_write_failure_leaves_no_temp_file(
     def _fail(*args: object, **kwargs: object) -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr("labelme._config._writer.os.replace", _fail)
+    monkeypatch.setattr("labelme._fs.os.replace", _fail)
 
     with pytest.raises(OSError, match="disk full"):
         _config.set_overrides(

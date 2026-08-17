@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import tempfile
 from collections.abc import Sequence
 from io import StringIO
 from pathlib import Path
@@ -11,6 +9,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.comments import CommentedSeq
 
+from .. import _fs
 from .. import _yaml
 from ._shape_color import migrate_shape_color
 from ._shape_color import validate_shape_color
@@ -63,19 +62,6 @@ def _prune(doc: CommentedMap, key_path: Sequence[str]) -> None:
         del doc[head]
 
 
-def _atomic_write(config_file: Path, content: str) -> None:
-    fd, tmp = tempfile.mkstemp(
-        dir=config_file.parent, prefix=f"{config_file.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp, config_file)
-    except BaseException:
-        os.unlink(tmp)
-        raise
-
-
 def set_overrides(
     config_file: Path, overrides: Sequence[tuple[Sequence[str], object]]
 ) -> None:
@@ -113,4 +99,6 @@ def set_overrides(
         buffer = StringIO()
         yaml.dump(doc, buffer)
         content = buffer.getvalue()
-    _atomic_write(config_file=config_file, content=content)
+    # preserve_mode=False: unlike Annotation Files, a Config File's mode has
+    # never survived a save (pre-dates the shared helper); kept as-is here.
+    _fs.atomic_write(config_file, lambda f: f.write(content), preserve_mode=False)
