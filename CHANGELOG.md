@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added **DragmeTolabel**: A mobile/tablet-friendly web application for sales representatives to load room photos, choose between 5 surface presets (Floor, Ceiling, Corner Bath, Alcove Bath, Cali Bath), adjust vertices/polygons with touch loupe and whole-polygon dragging, and render photorealistic OpenCV material replacements with perspective homography, lighting, and shadow preservation.
 - Expanded the Settings dialog with a scrollable page of workflow-oriented groups, an icon-labeled section index for quick navigation, and explanatory descriptions, so that auto-save, saving image data, keep-previous annotation/zoom/brightness-contrast, fill-drawing, label sorting/completion/text-field behavior, and the default AI model can all be changed in-app with immediate apply, instead of requiring hand-editing the config file ([#2403](https://github.com/wkentaro/labelme/pull/2403))
 
 ### Changed

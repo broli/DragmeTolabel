@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DragmeTolabel - Instant Surface Replacement & Visualizer</title>
+  <meta name="description" content="Mobile-optimized sales rep visualizer for instant polygon fitting, OpenCV surface replacement, and photorealistic client previews.">
+  
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/canvas.css?v=3">
+</head>
+<body class="theme-dark">
+  <div id="app" class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">DragmeTolabel</h1>
+          <span class="brand-badge">Sales Visualizer</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- New Photo Button (Triggers photo onboarding modal) -->
+        <button class="btn btn-secondary" id="btn-new-photo" title="Take new photo or choose from gallery">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <span class="btn-text">New Photo</span>
+        </button>
+
+        <!-- Surface & Finish Menu Button -->
+        <button class="btn btn-secondary btn-surface-toggle" id="btn-surface-menu" title="Change surface feature, materials, shadow depth, and pattern density">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+          </svg>
+          <span class="btn-text">Surface & Finish</span>
+          <span class="surface-badge-pill" id="surface-badge-pill">Alcove Bath</span>
+        </button>
+
+        <!-- Sample Photos Dropdown -->
+        <div class="dropdown-wrapper">
+          <button class="btn btn-ghost" id="btn-samples-menu" title="Select demo room photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span class="btn-text">Samples</span>
+          </button>
+          <div class="dropdown-menu" id="samples-dropdown">
+            <button class="dropdown-item" data-sample="sample_bathroom_alcove">
+              <span class="sample-title">Alcove Bathroom</span>
+              <span class="sample-subtitle">3-wall tub surround</span>
+            </button>
+            <button class="dropdown-item" data-sample="sample_bathroom_corner">
+              <span class="sample-title">Corner Bathroom</span>
+              <span class="sample-subtitle">2-wall corner bath</span>
+            </button>
+            <button class="dropdown-item" data-sample="sample_room_floor">
+              <span class="sample-title">Living Room Floor</span>
+              <span class="sample-subtitle">Perspective ground plane</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Preview Button (Primary Action) -->
+        <button class="btn btn-primary btn-glow" id="btn-preview" title="Generate OpenCV photorealistic material replacement">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span class="btn-text">Preview</span>
+        </button>
+
+        <!-- Export JSON Button -->
+        <button class="btn btn-ghost" id="btn-export-json" title="Export Labelme-compatible annotation JSON">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span class="btn-text">Export</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Initial Photo Capture & Onboarding Overlay -->
+    <div class="onboarding-overlay" id="photo-onboarding-modal">
+      <div class="onboarding-backdrop"></div>
+      <div class="onboarding-card">
+        <button class="onboarding-close-btn" id="btn-close-onboarding" title="Dismiss" style="display: none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+
+        <div class="onboarding-header">
+          <div class="onboarding-brand-badge">
+            <div class="brand-logo-small">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+              </svg>
+            </div>
+            <span>DragmeTolabel</span>
+          </div>
+          <h2 class="onboarding-title">Attach Client Photo</h2>
+          <p class="onboarding-subtitle">Take a photo of the client's space with your camera or upload from your device to begin instant surface visualization.</p>
+        </div>
+
+        <div class="onboarding-actions">
+          <!-- 1. Take Photo with Camera (Direct camera access on iOS & Android) -->
+          <label for="camera-capture-input" class="onboarding-action-card primary-action" id="btn-onboarding-camera">
+            <div class="action-card-icon camera-glow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </div>
+            <div class="action-card-content">
+              <span class="action-card-title">Take Photo with Camera</span>
+              <span class="action-card-subtitle">Direct camera capture for mobile & tablet</span>
+            </div>
+            <div class="action-card-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </label>
+          <input type="file" id="camera-capture-input" accept="image/*" capture="environment" class="sr-only">
+
+          <!-- 2. Choose from Gallery / File System -->
+          <label for="gallery-upload-input" class="onboarding-action-card secondary-action" id="btn-onboarding-gallery">
+            <div class="action-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+            <div class="action-card-content">
+              <span class="action-card-title">Choose from Gallery / Files</span>
+              <span class="action-card-subtitle">Select photo from photo library or desktop files</span>
+            </div>
+            <div class="action-card-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </label>
+          <input type="file" id="gallery-upload-input" accept="image/*" class="sr-only">
+
+          <!-- 3. Desktop Drag & Drop Area -->
+          <div class="onboarding-dropzone" id="onboarding-dropzone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="dropzone-icon">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span class="dropzone-text">Or drag and drop photo file here</span>
+          </div>
+        </div>
+
+        <div class="onboarding-divider">
+          <span>OR TEST WITH DEMO SAMPLES</span>
+        </div>
+
+        <!-- 4. Quick Demo Room Samples -->
+        <div class="onboarding-samples-grid">
+          <button class="onboarding-sample-card" data-sample="sample_bathroom_alcove">
+            <span class="sample-emoji">🛁</span>
+            <div class="sample-info">
+              <span class="sample-name">Alcove Bathroom</span>
+              <span class="sample-desc">3-wall tub surround</span>
+            </div>
+          </button>
+          <button class="onboarding-sample-card" data-sample="sample_bathroom_corner">
+            <span class="sample-emoji">🚿</span>
+            <div class="sample-info">
+              <span class="sample-name">Corner Bathroom</span>
+              <span class="sample-desc">2-wall corner bath</span>
+            </div>
+          </button>
+          <button class="onboarding-sample-card" data-sample="sample_room_floor">
+            <span class="sample-emoji">🏠</span>
+            <div class="sample-info">
+              <span class="sample-name">Living Room</span>
+              <span class="sample-desc">Perspective floor plane</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unified Surface, Materials & Shading Flyout Drawer / Modal -->
+    <div class="surface-drawer-overlay hidden" id="surface-drawer-overlay">
+      <div class="surface-drawer-backdrop" id="surface-drawer-backdrop"></div>
+      <div class="surface-drawer-panel" id="surface-drawer-panel">
+        <div class="drawer-header">
+          <div class="drawer-header-left">
+            <div class="drawer-header-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="drawer-title">Surface & Finish Settings</h3>
+              <p class="drawer-subtitle">Select surface feature, material texture, and shadow depth</p>
+            </div>
+          </div>
+          <button class="drawer-close-btn" id="btn-close-surface-drawer" title="Close Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="drawer-content">
+          <!-- 1. Surface Feature Presets -->
+          <div class="drawer-section">
+            <div class="drawer-section-title">
+              <span>1. Surface Feature Preset</span>
+              <span class="section-badge" id="drawer-active-preset-badge">Alcove Bath</span>
+            </div>
+            <div class="presets-grid-drawer" id="presets-container">
+              <!-- Populated by presets.js -->
+            </div>
+          </div>
+
+          <!-- 2. Materials & Finishes Grid -->
+          <div class="drawer-section">
+            <div class="drawer-section-title">
+              <span>2. Material & Texture Finish</span>
+              <span class="section-badge" id="drawer-active-material-badge">Carrara Marble</span>
+            </div>
+            <div class="materials-grid-drawer" id="materials-container">
+              <!-- Populated by app.js -->
+            </div>
+          </div>
+
+          <!-- 3. Shadow & Repetition Sliders -->
+          <div class="drawer-section">
+            <div class="drawer-section-title">
+              <span>3. Lighting & Pattern Controls</span>
+            </div>
+            <div class="drawer-sliders-grid">
+              <div class="slider-control-card">
+                <div class="slider-control-header">
+                  <span class="slider-control-name">Natural Shadow Depth</span>
+                  <span id="label-lighting-val" class="slider-control-val">85%</span>
+                </div>
+                <input type="range" id="slider-lighting" min="0" max="150" value="85" class="slider-input">
+                <span class="slider-control-hint">Isolates ambient occlusion and corner shadows from original photo</span>
+              </div>
+
+              <div class="slider-control-card">
+                <div class="slider-control-header">
+                  <span class="slider-control-name">Tile / Pattern Density</span>
+                  <span id="label-scale-val" class="slider-control-val">1.0x</span>
+                </div>
+                <input type="range" id="slider-scale" min="5" max="35" value="10" class="slider-input">
+                <span class="slider-control-hint">Adjusts repetition scale of material texture across surfaces</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="drawer-footer">
+          <button class="btn btn-secondary" id="btn-done-surface-drawer">Done</button>
+          <button class="btn btn-primary btn-glow" id="btn-drawer-preview">Preview Finish</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Workspace (Full-bleed Canvas) -->
+    <main class="app-workspace">
+      <div class="canvas-wrapper" id="canvas-container">
+        <canvas id="main-canvas"></canvas>
+        <div id="loupe-container" class="touch-loupe" style="display: none;">
+          <canvas id="loupe-canvas" width="160" height="160"></canvas>
+          <div class="loupe-crosshair"></div>
+        </div>
+        
+        <!-- Instructions / Touch Helper Tip (moves to top for flooring) -->
+        <div class="canvas-hint" id="canvas-hint">
+          <span class="hint-icon">👆</span>
+          <span class="hint-text">Drag vertices to match photo edges &bull; Drag inside to move surface</span>
+        </div>
+
+        <!-- Processing Overlay Loader -->
+        <div class="canvas-loading" id="canvas-loading" style="display: none;">
+          <div class="spinner"></div>
+          <div class="loading-text">Rendering OpenCV Perspective & Shadows...</div>
+        </div>
+      </div>
+
+      <!-- Before / After Comparison Modal / Slider Overlay -->
+      <div class="comparison-overlay" id="comparison-overlay" style="display: none;">
+        <div class="comparison-header">
+          <div class="comparison-title">Photorealistic Client Preview</div>
+          <div class="comparison-actions">
+            <button class="btn btn-sm btn-ghost" id="btn-toggle-comparison-mode">Split View</button>
+            <button class="btn btn-sm btn-secondary" id="btn-close-comparison">Back to Edit</button>
+          </div>
+        </div>
+        <div class="comparison-body" id="comparison-body">
+          <div class="split-container" id="split-container">
+            <img id="before-image" class="comparison-img before-img" alt="Original Photo">
+            <div class="after-wrapper" id="after-wrapper">
+              <img id="after-image" class="comparison-img after-img" alt="Rendered Preview">
+            </div>
+            <div class="split-divider" id="split-divider">
+              <div class="split-handle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </div>
+            </div>
+            <span class="comparison-badge badge-before">Original</span>
+            <span class="comparison-badge badge-after">New Finish</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast-container" style="display: none;">
+      <span id="toast-message"></span>
+    </div>
+  </div>
+
+  <!-- Application Scripts -->
+  <script type="module" src="js/app.js?v=3"></script>
+</body>
+</html>
