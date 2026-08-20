@@ -1,10 +1,12 @@
 """
 Preview & Export API Routes for DragmeTolabel.
 """
+
 from fastapi import APIRouter, HTTPException
-from ..core.schemas import PreviewRequest, PreviewResponse, LabelmeExportResponse
+
 from ..core.labelme_bridge import export_to_labelme_json
-from ..cv.renderer import render_preview, decode_base64_image
+from ..core.schemas import PreviewRequest, PreviewResponse
+from ..cv.renderer import decode_base64_image, render_preview
 
 router = APIRouter(prefix="", tags=["Preview & Export"])
 
@@ -24,6 +26,7 @@ async def generate_preview(request: PreviewRequest) -> PreviewResponse:
 
 
 @router.post("/export")
+@router.post("/export-labelme")
 async def export_labelme_annotation(request: PreviewRequest) -> dict:
     """
     Exports the current image and polygon annotation into standard Labelme 5.x JSON format.

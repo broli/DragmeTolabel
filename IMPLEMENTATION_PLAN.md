@@ -21,6 +21,30 @@ graph TD
 
 ---
 
+## Progress Tracking & Execution Notes
+
+### Status Checklist
+- [x] **Step 1**: Baseline Checkpoint & Remote Backup Push
+- [x] **Step 2**: Quarantine Out-of-Scope Files & Legacy Code
+- [x] **Step 3**: Clean & Reorganize Test Suite
+- [x] **Step 4**: Modernize Project Configuration & Build System
+- [x] **Step 5**: Revamp LLM Directives & Project Documentation
+- [x] **Step 6**: Codebase Audit & Sanity Verification
+
+### Execution Notes & Decision Log
+*Record any observations, edge cases, decisions, or deviations encountered during implementation below:*
+
+| Date / Timestamp | Step | Status | Notes / Blockers / Deviations |
+| :--- | :--- | :--- | :--- |
+| 2026-08-20 | Step 1 | Completed | Baseline snapshot committed and pushed to remote `origin Dev`. |
+| 2026-08-20 | Step 2 | Completed | Moved legacy PyQt desktop app, tests, examples, docs/adr, out-of-scope files, and tools to `_legacy_archive/` and added `/_legacy_archive/` to `.gitignore`. |
+| 2026-08-20 | Step 3 | Completed | Reorganized test suite into `tests/test_backend.py`, removed `backend/tests/`, updated `pyproject.toml` (pytest `testpaths`, `pythonpath`, `norecursedirs`), verified 6/6 tests passing with 0 warnings. |
+| 2026-08-20 | Step 4 | Completed | Modernized `pyproject.toml` (name: `dragmetolabel`, version: `0.1.0`, pruned legacy deps, entrypoint `dragmetolabel`), updated `backend/app/main.py` (FastAPI lifespan, v0.1.0, `run()`), updated `backend/app/api/routes_preview.py` (`/export-labelme`), streamlined `Makefile` (`dev`, `test`, `lint`, `format`, `check`), modernized `.github/workflows/test.yml` & `lint.yml` for clean Python 3.12-3.14 testing, added API integration test, and verified 7/7 tests passing with 0 warnings. |
+| 2026-08-20 | Step 5 | Completed | Updated AGENTS.md & CLAUDE.md (branching strategy, conventional commits, architecture, workflows, changelog SOP), updated README.md (upstream attribution, features, quickstart, architecture), updated CONTEXT.md (domain concepts, presets, homography, lighting engine, labelme bridge), initialized CHANGELOG.md at v0.1.0 Alpha (Keep a Changelog), created docs/architecture.md, and updated docs/agents/domain.md. |
+| 2026-08-20 | Step 6 | Completed | Completed end-to-end audit: verified server startup and all endpoints (`/presets`, `/materials`, `/preview`, `/export-labelme`, `/`), passed full pytest suite (7/7 passing with 0 warnings), passed ruff linter checks, and completed E2E browser validation with homography rendering. |
+
+---
+
 ### Step 1: Baseline Checkpoint & Remote Backup Push
 
 **Goal**: Guarantee an immutable snapshot on GitHub of the current state (POC files + legacy code) before touching repository structure.

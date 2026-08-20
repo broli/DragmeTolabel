@@ -1,7 +1,7 @@
 """
 Preset API Routes for DragmeTolabel.
 """
-from typing import List
+
 from fastapi import APIRouter, HTTPException
 
 from ..core.presets import get_all_presets, get_preset_by_id
@@ -10,8 +10,8 @@ from ..core.schemas import PresetDefinition
 router = APIRouter(prefix="/presets", tags=["Presets"])
 
 
-@router.get("", response_model=List[PresetDefinition])
-async def list_presets() -> List[PresetDefinition]:
+@router.get("", response_model=list[PresetDefinition])
+async def list_presets() -> list[PresetDefinition]:
     """Returns all 5 surface preset definitions and topologies."""
     return get_all_presets()
 

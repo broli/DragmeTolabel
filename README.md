@@ -1,205 +1,147 @@
 <h1 align="center">
-  <img src="labelme/icons/icon-256.png" width="200" height="200"><br/>labelme
+  DragMeToLabel
 </h1>
 
 <h4 align="center">
-  Image annotation with Python.
+  Computer Vision & 2.5D Polygon Surface Replacement Web Application for Sales Representatives
 </h4>
 
 <div align="center">
-  <a href="https://pypi.python.org/pypi/labelme"><img src="https://img.shields.io/pypi/v/labelme.svg"></a>
-  <!-- <a href="https://pypi.org/project/labelme"><img src="https://img.shields.io/pypi/pyversions/labelme.svg"></a> -->
-  <a href="https://github.com/wkentaro/labelme/actions"><img src="https://github.com/wkentaro/labelme/actions/workflows/test.yml/badge.svg?branch=main&event=push"></a>
-  <a href="https://discord.com/invite/uAjxGcJm83"><img src="https://dcbadge.limes.pink/api/server/uAjxGcJm83?style=flat"></a>
+  <a href="https://github.com/broli/DragmeTolabel/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen.svg" alt="CI"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue.svg" alt="Python Versions"></a>
+  <a href="https://github.com/broli/DragmeTolabel"><img src="https://img.shields.io/badge/version-0.1.0--alpha-orange.svg" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-lightgrey.svg" alt="License"></a>
 </div>
 
 <div align="center">
-  <a href="#installation"><b>Installation</b></a>
-  | <a href="#usage"><b>Usage</b></a>
-  | <a href="#examples"><b>Examples</b></a>
-  | <a href="https://labelme.io"><b>labelme.io ↗</b></a>
-  <!-- | <a href="https://github.com/wkentaro/labelme/discussions"><b>Community</b></a> -->
-  <!-- | <a href="https://www.youtube.com/playlist?list=PLI6LvFw0iflh3o33YYnVIfOpaO0hc5Dzw"><b>Youtube FAQ</b></a> -->
+  <a href="#overview"><b>Overview</b></a>
+  | <a href="#key-features"><b>Key Features</b></a>
+  | <a href="#quickstart"><b>Quickstart</b></a>
+  | <a href="#architecture"><b>Architecture</b></a>
+  | <a href="#upstream-attribution"><b>Attribution</b></a>
 </div>
 
 <br/>
 
-<div align="center">
-  <img src="examples/instance_segmentation/.readme/annotation.jpg" width="70%">
-</div>
+---
 
-## Description
+## Upstream Attribution & Fork Heritage
 
-Labelme is a graphical image annotation tool inspired by <http://labelme.csail.mit.edu>.\
-It is written in Python and uses Qt for its graphical interface.
+> **Note on Upstream Project**:
+> **DragMeToLabel** originated as an adaptation and fork inspired by [**labelme**](https://github.com/wkentaro/labelme) (created by [Kentaro Wada](https://github.com/wkentaro) and inspired by MIT CSAIL LabelMe).
+>
+> While `labelme` is a general-purpose desktop image annotation tool for computer vision datasets, **DragMeToLabel** focuses specifically on in-the-field sales visualization: enabling sales reps on tablets and mobile devices to load room photos, snap 2.5D architectural surface presets (floors, ceilings, bathtubs, walls), adjust vertices with a touch loupe, and generate real-time perspective-correct material replacements with OpenCV homography and shadow preservation.
+>
+> For users looking for the general-purpose desktop annotation tool with PySide6/Qt or SAM integration, please visit the upstream [labelme repository](https://github.com/wkentaro/labelme) or [labelme.io](https://labelme.io).
 
-> Looking for a simple install without Python or Qt? Get the standalone app at **[labelme.io](https://labelme.io)**.
+---
 
-<img src="examples/instance_segmentation/data_dataset_voc/JPEGImages/2011_000006.jpg" width="19%" /> <img src="examples/instance_segmentation/data_dataset_voc/SegmentationClass/2011_000006.png" width="19%" /> <img src="examples/instance_segmentation/data_dataset_voc/SegmentationClassVisualization/2011_000006.jpg" width="19%" /> <img src="examples/instance_segmentation/data_dataset_voc/SegmentationObject/2011_000006.png" width="19%" /> <img src="examples/instance_segmentation/data_dataset_voc/SegmentationObjectVisualization/2011_000006.jpg" width="19%" />\
-<i>VOC dataset example of instance segmentation.</i>
+## Overview
 
-<img src="examples/semantic_segmentation/.readme/annotation.jpg" width="30%" /> <img src="examples/bbox_detection/.readme/annotation.jpg" width="30%" /> <img src="examples/classification/.readme/annotation_cat.jpg" width="35%" />\
-<i>Other examples (semantic segmentation, bbox detection, and classification).</i>
+**DragMeToLabel** transforms room photos into interactive sales visualization canvases. Sales representatives can photograph a customer's bathroom, kitchen, or living room, select an architectural preset (e.g. *Floor*, *Alcove Bath*, *Corner Bath*), align surface planes in seconds with precision touch controls, and preview realistic surface material upgrades (hardwood, marble tile, slate, herringbone) rendered with true optical perspective, luminance matching, and shadow preservation.
 
-<img src="https://user-images.githubusercontent.com/4310419/47907116-85667800-de82-11e8-83d0-b9f4eb33268f.gif" width="30%" /> <img src="https://user-images.githubusercontent.com/4310419/47922172-57972880-deae-11e8-84f8-e4324a7c856a.gif" width="30%" /> <img src="https://user-images.githubusercontent.com/14256482/46932075-92145f00-d080-11e8-8d09-2162070ae57c.png" width="32%" />\
-<i>Various primitives (polygon, rectangle, circle, line, and point).</i>
+Annotations can also be exported with one click into standard **Labelme 5.x JSON format** for downstream CV/ML pipelines and automated geometry estimation.
 
-<img src="https://github.com/user-attachments/assets/53bf09db-b097-48b7-9f32-ab490da5ac53" width="32%" />
-<p><i>Multi-language support (English, 中文, 日本語, 한국어, Deutsch, Français, and more).</i></p>
+---
 
-## Features
+## Key Features
 
-- [x] Image annotation for polygon, rectangle, circle, line and point ([tutorial](examples/tutorial))
-- [x] Image flag annotation for classification and cleaning ([#166](https://github.com/wkentaro/labelme/pull/166))
-- [x] Video annotation ([video annotation](examples/video_annotation))
-- [x] GUI customization (predefined labels / flags, auto-saving, label validation, etc) ([#144](https://github.com/wkentaro/labelme/pull/144))
-- [x] Exporting VOC-format dataset for [semantic segmentation](examples/semantic_segmentation), [instance segmentation](examples/instance_segmentation)
-- [x] Exporting COCO-format dataset for [instance segmentation](examples/instance_segmentation)
-- [x] AI-assisted point-to-polygon/mask annotation by SAM, EfficientSAM models
-- [x] AI text-to-annotation by YOLO-world, SAM3 models
+- 🎯 **2.5D Architectural Presets**: Instant geometry initialization for common architectural layouts:
+  - `floor` (1 plane quad)
+  - `ceiling` (1 plane quad)
+  - `corner_bath` (2 connected wall quads + floor quad)
+  - `alcove_bath` (3 connected wall quads: left, back, right + floor quad)
+  - `cali_bath` (3 wall quads + tub deck + apron quads)
+- 🔍 **Mobile & Tablet Touch Loupe**: High-precision floating magnifier widget that activates during touch and mouse dragging to ensure pinpoint vertex positioning on small screens.
+- 📐 **OpenCV Homography Engine**: Real-time perspective transformations (`cv2.getPerspectiveTransform` + `cv2.warpPerspective`) that warp rectangular material textures directly into arbitrary quadrilaterals.
+- 💡 **Lighting & Shadow Preservation**: Advanced luminance extraction and overlay blending that preserves ambient room lighting, shadows, and surface highlights on newly applied materials.
+- 🎨 **Extensible Material Catalog**: Realistic high-res textures and procedural patterns (Oak Hardwood, Marble Tile, Slate, Herringbone, Travertine, Matte Paint).
+- 🎚️ **Interactive Comparison Slider**: Split-screen before/after slider on the canvas for instant visual proofing with customers.
+- 🔄 **Headless Labelme 5.x Bridge**: Seamless bidirectional compatibility with standard Labelme JSON annotation formats (`shapes`, `points`, `imagePath`, `imageData`).
 
-**🌏 Available in 20 languages** - English · 日本語 · 한국어 · 简体中文 · 繁體中文 · Deutsch · Ελληνικά · Français · Español · Italiano · Português · Nederlands · Magyar · Русский · ไทย · Tiếng Việt · Türkçe · Українська · Polski · فارسی (`LANG=ja_JP.UTF-8 labelme`)
+---
 
-## Installation
+## Quickstart
 
-There are 3 options to install labelme:
+### Prerequisites
+- Python 3.12 or newer
+- Modern web browser (Chrome, Safari, Edge, Firefox)
 
-### Option 1: Using pip
-
-For more detail, check ["Install Labelme using Terminal"](https://www.labelme.io/docs/install-labelme-terminal)
-
-```bash
-pip install labelme
-
-# To install the latest version from GitHub:
-# pip install git+https://github.com/wkentaro/labelme.git
-```
-
-### Option 2: Using standalone executable (Easiest)
-
-If you're willing to invest in the convenience of simple installation without any dependencies (Python, Qt),
-you can download the standalone executable from ["Install Labelme as App"](https://www.labelme.io/docs/install-labelme-app).
-
-It's a one-time payment for lifetime access, and it helps us to maintain this project.
-
-### Option 3: Linux distribution packages
-
-On some Linux distributions, labelme is also packaged in the system's native repository and can be installed with the distribution's standard package tooling. The badge below tracks which distributions currently ship labelme and which version each one provides:
-
-[![Packaging status](https://repology.org/badge/vertical-allrepos/labelme.svg)](https://repology.org/project/labelme/versions)
-
-### Supported Python and platforms
-
-|        | Supported (v7.x)               | Maintenance (v6.3.x) |
-| ------ | ------------------------------ | -------------------- |
-| Python | 3.12 - 3.14                    | 3.10 - 3.11          |
-| Qt     | Qt6 (PySide6)                  | Qt5                  |
-| OS     | 64-bit macOS / Windows / Linux | older OSes           |
-
-labelme follows [SPEC 0](https://scientific-python.org/specs/spec-0000/) (the successor to [NEP 29](https://numpy.org/neps/nep-0029-deprecation_policy.html)) for dropping Python versions, in step with its core scientific dependencies (numpy, scipy, scikit-image). v6.3.x is the maintenance line for Qt5 and Python 3.10 / 3.11 stragglers.
-
-v6.3.x receives critical fixes only, on a best-effort basis with no release cadence or SLA. "Critical" is limited to:
-
-- security vulnerabilities,
-- data-loss or annotation-corruption bugs,
-- install or launch breakage caused by upstream dependency drift.
-
-Feature backports and non-critical bugs are out of scope; all new development happens on v7.x.
-
-### Upgrading from v6.x to v7
-
-v7.0.0 raises the platform floor:
-
-- **Qt binding:** the GUI moved from PyQt5 (Qt5) to PySide6 (Qt6). `pip install labelme` now pulls PySide6 instead of PyQt5.
-- **Python:** the minimum is now Python 3.12 (3.10 and 3.11 are dropped).
-- **OS:** Qt6 requires a 64-bit macOS, Windows, or Linux; older OSes that only Qt5 supported are no longer covered.
-- **No public Python API:** labelme is an application, not a library, and exposes no stable Python API. Its internal modules were privatized in v7 (renamed to underscore-prefixed names), so `import labelme.app`, `labelme.utils`, `labelme.widgets`, and similar imports no longer work. If you previously imported labelme internals, pin `labelme<7` and vendor the code you need; see [`examples/utils.py`](examples/utils.py) for copy-and-adapt reference code that reads the JSON annotation format without depending on labelme.
-
-If you need to stay on PyQt5/Qt5, Python 3.10 or 3.11, or an older OS, pin to the v6.3.x maintenance line:
+### 1. Installation
 
 ```bash
-pip install 'labelme<7'
+# Clone the repository
+git clone https://github.com/broli/DragmeTolabel.git
+cd DragmeTolabel
+
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install package and dependencies
+pip install -e .
 ```
 
-All previous releases remain installable from [PyPI](https://pypi.org/project/labelme/#history), so existing pins keep working.
-
-v7.0.0 also changes config parsing:
-
-- **Config booleans:** `~/.labelmerc` is now parsed with ruamel.yaml (YAML 1.2), so the boolean spellings `yes`/`no`/`on`/`off` (in any capitalization) are read as strings rather than booleans. If you set any boolean option this way, switch it to `true`/`false`.
-
-### Public interface
-
-labelme is an application. The interfaces you can build on and that we keep stable are:
-
-- the **command-line interface** (`labelme ...`),
-- the **on-disk JSON annotation format**, and
-- the **`~/.labelmerc` config format**.
-
-Everything else, including the Python import surface, is internal and may change or be renamed without notice. To consume annotations from your own code, read the JSON format directly (see [`examples/utils.py`](examples/utils.py)).
-
-## Usage
-
-Run `labelme --help` for detail.\
-The annotations are saved as a [JSON](http://www.json.org/) file.
+### 2. Launch Development Server
 
 ```bash
-labelme  # just open gui
+# Using Makefile
+make dev
 
-# tutorial (single image example)
-cd examples/tutorial
-labelme apc2016_obj3.jpg  # specify image file
-labelme apc2016_obj3.jpg --output annotations/  # save annotation JSON files to a directory
-labelme apc2016_obj3.jpg --with-image-data  # include image data in JSON file
-labelme apc2016_obj3.jpg \
-  --labels highland_6539_self_stick_notes,mead_index_cards,kong_air_dog_squeakair_tennis_ball  # specify label list
-
-# semantic segmentation example
-cd examples/semantic_segmentation
-labelme data_annotated/  # Open directory to annotate all images in it
-labelme data_annotated/ --labels labels.txt  # specify label list with a file
+# Or directly with uvicorn
+uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Command Line Arguments
+Open your browser at **`http://localhost:8000`**.
 
-- `--output` specifies the location that annotations will be written to. If the location ends with .json, a single annotation will be written to this file. Only one image can be annotated if a location is specified with .json. If the location does not end with .json, the program will assume it is a directory. Annotations will be stored in this directory with a name that corresponds to the image that the annotation was made on.
-- The first time you run labelme, it will create a config file at `~/.labelmerc`. Add only the settings you want to override. For all available options and their defaults, see [`default_config.yaml`](labelme/_config/default_config.yaml). If you would prefer to use a config file from another location, you can specify this file with the `--config` flag.
-- Without the `--no-sort-labels` flag, the program will list labels in alphabetical order. When the program is run with this flag, it will display labels in the order that they are provided.
-- Flags are assigned to an entire image. [Example](examples/classification)
-- Labels are assigned to a single polygon. [Example](examples/bbox_detection)
+---
 
-### FAQ
-
-- **How to convert JSON file to numpy array?** See [examples/tutorial](examples/tutorial#convert-to-dataset).
-- **How to load label PNG file?** See [examples/tutorial](examples/tutorial#how-to-load-label-png-file).
-- **How to get annotations for semantic segmentation?** See [examples/semantic_segmentation](examples/semantic_segmentation).
-- **How to get annotations for instance segmentation?** See [examples/instance_segmentation](examples/instance_segmentation).
-
-## Examples
-
-- [Image Classification](examples/classification)
-- [Bounding Box Detection](examples/bbox_detection)
-- [Semantic Segmentation](examples/semantic_segmentation)
-- [Instance Segmentation](examples/instance_segmentation)
-- [Video Annotation](examples/video_annotation)
-
-## How to build standalone executable
+## Development & Testing
 
 ```bash
-LABELME_PATH=./labelme
-OSAM_PATH=$(python -c 'import os, osam; print(os.path.dirname(osam.__file__))')
-pyinstaller labelme/labelme/__main__.py \
-  --name=Labelme \
-  --windowed \
-  --noconfirm \
-  --specpath=build \
-  --add-data=$(OSAM_PATH)/_models/yoloworld/clip/bpe_simple_vocab_16e6.txt.gz:osam/_models/yoloworld/clip \
-  --add-data=$(LABELME_PATH)/_config/default_config.yaml:labelme/_config \
-  --add-data=$(LABELME_PATH)/icons/*:labelme/icons \
-  --add-data=$(LABELME_PATH)/translate/*:translate \
-  --icon=$(LABELME_PATH)/icons/icon-256.png \
-  --onedir
+# Run backend pytest suite
+make test
+
+# Run linter checks (Ruff)
+make lint
+
+# Auto-format codebase
+make format
+
+# Full validation (linter + tests)
+make check
 ```
 
-## Acknowledgement
+---
 
-This repo is the fork of [mpitid/pylabelme](https://github.com/mpitid/pylabelme).
+## Project Structure
+
+```
+DragMeToLabel/
+├── backend/
+│   └── app/
+│       ├── api/               # FastAPI route handlers (/presets, /materials, /preview, /export-labelme)
+│       ├── core/              # Geometry schemas, preset definitions, and Labelme bridge
+│       ├── cv/                # OpenCV homography, material textures, lighting & rendering pipeline
+│       └── main.py            # FastAPI application entrypoint & static file mounts
+├── frontend/                  # Interactive HTML5/CSS3/ES6 web visualizer
+│   ├── index.html             # Main visualizer page
+│   ├── css/style.css          # Responsive design & touch loupe styles
+│   └── js/                    # Canvas renderer, touch loupe, slider, and API client
+├── tests/                     # Pytest suite
+│   └── test_backend.py        # CV, homography, renderer, preset, and API tests
+├── docs/                      # Documentation and architecture guides
+│   ├── architecture.md        # Detailed system data flow and rendering architecture
+│   └── agents/                # LLM / agent guidance
+├── pyproject.toml             # Modern PEP 621 packaging & pytest/ruff config
+├── Makefile                   # Convenient dev, test, lint, and format commands
+├── CONTEXT.md                 # Domain glossary and language definitions
+├── AGENTS.md                  # Development workflows & branching rules
+└── CHANGELOG.md               # Version history (Keep a Changelog)
+```
+
+---
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0), carrying forward the open-source legacy of `labelme`. See [LICENSE](LICENSE) for details.

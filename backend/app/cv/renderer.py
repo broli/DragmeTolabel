@@ -3,11 +3,12 @@ Master OpenCV Rendering Engine for DragmeTolabel.
 Processes base64 / BGR images, iterates through preset planar geometries,
 applies homography warping, shadow extraction, and composite blending.
 """
+
 from __future__ import annotations
 
 import base64
 import time
-from typing import List, Tuple
+
 import cv2
 import numpy as np
 
@@ -54,30 +55,30 @@ def render_preview(request: PreviewRequest) -> PreviewResponse:
     7. Encodes and returns processed preview image
     """
     start_time = time.perf_counter()
-    
+
     # 1. Decode original image
     original_img = decode_base64_image(request.image_base64)
     img_h, img_w = original_img.shape[:2]
-    
+
     # 2. Get preset definition
     preset = get_preset_by_id(request.preset_id)
     if not preset or not preset.enabled:
         raise ValueError(f"Preset '{request.preset_id}' is not valid or currently disabled.")
-        
+
     # 3. Load material texture
     texture = get_material_texture(request.material_id)
-    
+
     # Copy original image to build composite
     current_composite = original_img.copy()
     total_planes_rendered = 0
-    
+
     # 4. Render each plane
     for plane in preset.planes:
         # Check that point indices are within bounds
         quad_points = [request.points[idx] for idx in plane.point_indices if idx < len(request.points)]
         if len(quad_points) != 4:
             continue
-            
+
         # Homography & perspective warp for this plane
         warped_tex, alpha_mask = warp_plane_texture(
             texture=texture,
@@ -85,7 +86,7 @@ def render_preview(request: PreviewRequest) -> PreviewResponse:
             output_shape=(img_h, img_w),
             tile_scale=request.tile_scale,
         )
-        
+
         # Shadow / lighting extraction & composite
         current_composite = blend_material_with_lighting(
             warped_texture=warped_tex,
@@ -94,11 +95,11 @@ def render_preview(request: PreviewRequest) -> PreviewResponse:
             lighting_intensity=request.lighting_intensity,
         )
         total_planes_rendered += 1
-        
+
     # 5. Encode result
     result_b64 = encode_image_base64(current_composite, format="jpeg", quality=92)
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-    
+
     return PreviewResponse(
         success=True,
         processed_image_base64=result_b64,

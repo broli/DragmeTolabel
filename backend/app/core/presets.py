@@ -7,11 +7,10 @@ Defines normalized topologies for:
 4) Alcove Bath (8 dots, 10 lines)
 5) Cali Bath (Disabled / Coming Soon)
 """
-from typing import Dict, List
-from .schemas import PresetDefinition, PolygonPlane
 
+from .schemas import PolygonPlane, PresetDefinition
 
-PRESETS: Dict[str, PresetDefinition] = {
+PRESETS: dict[str, PresetDefinition] = {
     "floor": PresetDefinition(
         id="floor",
         name="Floor Surface",
@@ -164,7 +163,7 @@ PRESETS: Dict[str, PresetDefinition] = {
 }
 
 
-def get_all_presets() -> List[PresetDefinition]:
+def get_all_presets() -> list[PresetDefinition]:
     return list(PRESETS.values())
 
 

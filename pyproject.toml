@@ -1,17 +1,19 @@
 [build-system]
-requires = ["hatchling>=1.20.0", "hatch-vcs", "hatch-fancy-pypi-readme"]
+requires = ["hatchling>=1.20.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "labelme"
-description = "Image annotation with Python."
+name = "dragmetolabel"
+version = "0.1.0"
+description = "Computer Vision & Polygon Surface Replacement Web Application for Sales Reps"
+readme = "README.md"
 license = { text = "GPL-3.0-only" }
 requires-python = ">=3.12"
-authors = [{ name = "Kentaro Wada", email = "www.kentaro.wada@gmail.com" }]
+authors = [{ name = "DragMeToLabel Contributors" }]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "Intended Audience :: Science/Research",
+  "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
@@ -21,78 +23,65 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "imgviz>=2.0.0",
-  "loguru>=0.7",
-  "matplotlib>=3.7",
-  "natsort>=7.1.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.29.0",
+  "opencv-python-headless>=4.9.0",
   "numpy>=1.24",
-  "onnxruntime>=1.23.2",
-  "osam>=0.4.0",
-  "pillow>=2.8",
-  "pyside6>=6.8",
-  "scipy>=1.8",
-  "scikit-image>=0.21",
-  "tifffile>=2024.1.30",
-  "ruamel-yaml>=0.18",
+  "pillow>=10.0",
+  "scipy>=1.11",
+  "pydantic>=2.0",
 ]
-dynamic = ["readme", "version"]
 
-[tool.hatch.metadata.hooks.fancy-pypi-readme]
-content-type = "text/markdown"
-fragments = [{ path = "README.md" }]
-
-[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
-pattern = 'src="(?!https?://)([^"]+)"'
-replacement = 'src="https://raw.githubusercontent.com/wkentaro/labelme/main/\1"'
-
-[tool.hatch.version]
-source = "vcs"
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.4.0",
+  "httpx>=0.27.0",
+]
 
 [dependency-groups]
 dev = [
-  "ipython",
-  "mdformat-frontmatter>=2.0.10",
-  "mdformat>=0.7",
-  "packaging>=25.0",
-  "pytest>=8.3.4",
-  "pytest-cov>=7.1.0",
-  "pytest-qt>=4.4.0",
-  "pytest-xdist>=3.8.0",
-  "ruff~=0.12.11",
-  "taplo>=0.9.3",
-  "twine>=6.1.0",
-  "ty>=0.0.31",
-  "types-pillow>=10.2.0.20240822",
-  "typos>=1.45.0",
-  "yamlfix>=1.19.1",
-  "mdformat-gfm>=1.0.0",
+  "pytest>=8.0.0",
+  "ruff>=0.4.0",
+  "httpx>=0.27.0",
 ]
 
 [project.scripts]
-labelme = "labelme.__main__:main"
+dragmetolabel = "backend.app.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+norecursedirs = ["_legacy_archive", ".*", "build", "dist", "*.egg-info"]
 addopts = "-m 'not network'"
-qt_api = "pyside6"
 markers = [
-  "gui: mark a test as a GUI test.",
   "network: mark a test that accesses an external network service.",
 ]
+filterwarnings = [
+  "ignore::starlette.exceptions.StarletteDeprecationWarning",
+  "ignore::DeprecationWarning:fastapi.testclient",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
-  "ANN", # flake8-annotations
   "E",   # pycodestyle
   "F",   # pyflakes
   "I",   # isort
   "UP",  # pyupgrade
 ]
-# UP040 wants PEP 695 `type X = ...`, but our Literal aliases are enumerated at
-# runtime via typing.get_args(), which returns () for a lazy `type` alias.
-ignore = ["UP040"]
+ignore = [
+  "E501", # line-length handled by formatter
+]
 
 [tool.ruff.lint.isort]
-force-single-line = true
+force-single-line = false
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]

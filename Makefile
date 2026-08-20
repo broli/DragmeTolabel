@@ -1,47 +1,28 @@
-ifneq ($(OS),Windows_NT)
-	SHELL := bash
-endif
+.PHONY: help setup dev test lint format check
 
-.PHONY: help setup format lint test coverage update_translate check_translate
-.DEFAULT_GOAL := help
+PYTHON ?= $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; else which python3; fi)
+PYTEST ?= $(shell if [ -f .venv/bin/pytest ]; then echo .venv/bin/pytest; else which pytest; fi)
+RUFF ?= $(shell if [ -f .venv/bin/ruff ]; then echo .venv/bin/ruff; else which ruff; fi)
+UVICORN ?= $(shell if [ -f .venv/bin/uvicorn ]; then echo .venv/bin/uvicorn; else which uvicorn; fi)
 
-PYTEST_ARGS ?= --numprocesses=auto
+help:  ## Display this help screen
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-define exec
-	@uv run --no-sync python -c "print('\033[1;36m$(1)\033[0m')"
-	@$(1)
-endef
+setup:  ## Install dependencies into virtual environment
+	$(PYTHON) -m pip install -e ".[dev]"
 
-help:
-	@uv run --no-sync python -c "import re; lines=open('Makefile').read().splitlines(); print('\033[1;32mAvailable targets:\033[0m'); [print(f'  \033[1;36m{m.group(1):<20s}\033[0m {m.group(2)}') for l in lines if (m:=re.match(r'^([a-zA-Z_-]+):.*?# (.+)$$',l))]"
+dev:  ## Start the FastAPI development server
+	$(UVICORN) backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 
-setup:  # Setup the development environment
-	$(call exec,uv sync)
+test:  ## Run pytest test suite
+	$(PYTEST) -v tests/
 
-lint:  # Lint code
-	$(call exec,uv run ruff format --check)
-	$(call exec,uv run ruff check)
-	$(call exec,uv run ty check --no-progress)
-	$(call exec,git ls-files "*.toml" | xargs uv run taplo fmt --check)
-	$(call exec,git ls-files "*.md" | xargs uv run mdformat --check)
-	$(call exec,git ls-files "*.yml" "*.yaml" | xargs uv run yamlfix --check)
-	$(call exec,uv run typos)
+lint:  ## Run ruff linter checks
+	$(RUFF) check backend/ tests/
 
-format:  # Format code
-	$(call exec,uv run ruff format)
-	$(call exec,uv run ruff check --fix)
-	$(call exec,git ls-files "*.toml" | xargs uv run taplo fmt)
-	$(call exec,git ls-files "*.md" | xargs uv run mdformat)
-	$(call exec,git ls-files "*.yml" "*.yaml" | xargs uv run yamlfix)
+format:  ## Format and fix code with ruff
+	$(RUFF) format backend/ tests/
+	$(RUFF) check --fix backend/ tests/
 
-test:  # Run tests
-	$(call exec,uv run pytest -v tests/ $(PYTEST_ARGS))
-
-update_translate:  # Regenerate the translation catalogs
-	$(call exec,uv run tools/update_translate.py)
-
-check_translate:  # Fail if the translation catalogs are stale or incomplete (CI and release gate)
-	$(call exec,uv run tools/update_translate.py --check)
-
-coverage:  # Run tests with coverage
-	$(MAKE) test PYTEST_ARGS="--cov=labelme --cov-report=term-missing"
+check: lint test  ## Run all linting and test checks

@@ -2,9 +2,11 @@
 Pydantic schemas for DragmeTolabel.
 Defines polygon geometries, presets, preview requests, and Labelme interoperability models.
 """
+
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -16,8 +18,8 @@ class Point2D(BaseModel):
 class PolygonPlane(BaseModel):
     id: str = Field(..., description="Unique plane identifier (e.g. 'left_wall', 'back_wall', 'floor')")
     name: str = Field(..., description="Human readable name")
-    point_indices: List[int] = Field(..., description="Indices into the parent points list forming this quadrilateral")
-    material_id: Optional[str] = Field(default=None, description="Optional custom material override for this plane")
+    point_indices: list[int] = Field(..., description="Indices into the parent points list forming this quadrilateral")
+    material_id: str | None = Field(default=None, description="Optional custom material override for this plane")
 
 
 class PresetDefinition(BaseModel):
@@ -27,11 +29,11 @@ class PresetDefinition(BaseModel):
     point_count: int
     line_count: int
     enabled: bool = True
-    default_normalized_points: List[List[float]] = Field(
+    default_normalized_points: list[list[float]] = Field(
         ..., description="Default normalized [x, y] coordinates in [0, 1]"
     )
-    lines: List[List[int]] = Field(..., description="List of [start_idx, end_idx] pairs for visual wireframe")
-    planes: List[PolygonPlane] = Field(..., description="List of planar quads for homography warping")
+    lines: list[list[int]] = Field(..., description="List of [start_idx, end_idx] pairs for visual wireframe")
+    planes: list[PolygonPlane] = Field(..., description="List of planar quads for homography warping")
 
 
 class MaterialInfo(BaseModel):
@@ -47,7 +49,7 @@ class MaterialInfo(BaseModel):
 class PreviewRequest(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded original photo (JPEG/PNG)")
     preset_id: str = Field(..., description="Selected preset ID")
-    points: List[List[float]] = Field(..., description="Current polygon points in pixel coordinates [[x, y], ...]")
+    points: list[list[float]] = Field(..., description="Current polygon points in pixel coordinates [[x, y], ...]")
     material_id: str = Field(default="carrara_marble", description="Selected material ID")
     lighting_intensity: float = Field(default=0.85, description="Shadow/lighting preservation factor (0.0 - 1.5)")
     tile_scale: float = Field(default=1.0, description="Texture tiling scale factor")
@@ -59,24 +61,24 @@ class PreviewResponse(BaseModel):
     preset_id: str
     planes_rendered: int
     processing_time_ms: float
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class LabelmeShapeDict(BaseModel):
     label: str
-    points: List[List[float]]
-    group_id: Optional[int] = None
+    points: list[list[float]]
+    group_id: int | None = None
     description: str = ""
     shape_type: str = "polygon"
     flags: dict[str, Any] = Field(default_factory=dict)
-    mask: Optional[str] = None
+    mask: str | None = None
 
 
 class LabelmeExportResponse(BaseModel):
     version: str = "5.5.0"
     flags: dict[str, Any] = Field(default_factory=dict)
-    shapes: List[LabelmeShapeDict]
+    shapes: list[LabelmeShapeDict]
     imagePath: str
-    imageData: Optional[str] = None
+    imageData: str | None = None
     imageHeight: int
     imageWidth: int
