@@ -1,135 +1,99 @@
-# labelme
+# DragMeToLabel Domain Context & Glossary
 
-The domain language of labelme, a desktop image-annotation tool. This glossary covers the user-facing data model — what an annotated Image consists of and how its parts relate.
+This glossary defines the domain vocabulary and conceptual data model of **DragMeToLabel**, a web-based computer vision application designed for sales representatives to replace architectural surfaces in room photos in real time.
 
-## Language
+---
 
-### Data model
+## Domain Vocabulary
 
-**Annotation**:
-The complete bundle of labelme data attached to one Image — its image-level Flags, its Shapes, and the per-Shape Flags carried by each Shape. Persisted as one JSON file on disk.
-_Avoid_: using "annotation" for a single Shape.
+### Surface Geometry & Presets
 
-**Shape**:
-One drawn region on an Image with a class Label. Concrete kinds are distinguished by `shape_type` (polygon, rectangle, circle, line, point, linestrip, mask). A Shape is one constituent of an Annotation, never the whole.
-_Avoid_: annotation (for a single region), region, marker, primitive.
+**Preset**:
+A predefined 2.5D architectural surface template (e.g. `floor`, `ceiling`, `corner_bath`, `alcove_bath`, `cali_bath`) defining default polygon vertices, interconnected quadrilateral planes, and perspective constraints for common room geometries.
+_Avoid_: layout template, template, macro, wireframe.
 
-**Flag**:
-A boolean tag attached to the Image as a whole, used for image-level classification or cleaning (e.g. `cat`, `dog`, `blurry`). Lives at the top of the Annotation alongside Shapes.
-_Avoid_: tag, attribute, image label.
+**Plane**:
+A single quadrilateral surface component (4 ordered vertices: Top-Left, Top-Right, Bottom-Right, Bottom-Left) within a Preset. Each plane represents an independent physical surface (e.g. `back_wall`, `left_wall`, `right_wall`, `floor_plane`, `tub_apron`) onto which a distinct material texture can be projected.
+_Avoid_: quad, polygon (when referring to an architectural facet), shape, bounding box.
 
-**Shape Flag**:
-A boolean attribute attached to one Shape (e.g. `occluded`, `truncated`). Same data shape as a Flag but a different concept — it qualifies a single Shape, not the Image.
-_Avoid_: flag (unqualified), attribute, modifier.
+**Control Point (Vertex)**:
+A 2D coordinate $(x, y)$ in image space representing an editable vertex of a Plane. Draggable via mouse or touch input to align the virtual plane with the actual physical boundaries in the room photo.
+_Avoid_: corner, anchor point, node, marker.
 
-**Label**:
-The class string on a Shape (e.g. `"cat"`, `"car"`). One Shape has exactly one Label. Labels are not Annotations — they are a property of one Shape.
-_Avoid_: class, category, tag, name; also avoid "label" to mean the Annotation File.
+**Shared Vertex**:
+A Control Point that is referenced by more than one adjacent Plane within the same Preset (e.g., the intersection between the back wall and left wall in an alcove bath). Moving a shared vertex updates all connected planes simultaneously to preserve topological continuity.
+_Avoid_: joined point, common point, corner pin.
 
-**Annotation File**:
-The on-disk persisted form of one Annotation, stored as JSON. There is one Annotation File per Image. Identified in code as `LabelFile` / `LabelData` for historical reasons — that legacy name is not promoted as glossary vocabulary.
-_Avoid_: label file, JSON file (when more precision is helpful), annotation json.
+---
 
-**Group**:
-A set of Shapes sharing a common `group_id`, marking them as belonging together. The reason for grouping is application-defined — instance segmentation uses it for the visible parts of one occluded object, but the concept is general and not tied to any one use case.
-_Avoid_: instance (it is only one application of grouping), cluster.
+### Computer Vision & Rendering Engine
 
-**AI Assist**:
-Interactive, prompt-driven Shape proposal on the canvas: the user places positive / negative points or draws a box on the Image and a vision model (SAM, SAM2, EfficientSAM, SAM3) returns candidate Shapes. A point prompt contributes one candidate Shape, chosen by how well it satisfies the points and then by model confidence. A SAM3 box prompt is a Sweep. Candidates become new Shapes unless Existing Shape Suppression is enabled.
-_Avoid_: AI annotation (too vague — covers AI Text Prompt too), auto-annotation, automation.
+**Homography (Perspective Transformation)**:
+A $3 \times 3$ projective transformation matrix computed using OpenCV (`cv2.getPerspectiveTransform`) that maps a canonical rectangular material texture $([0, 0], [W, 0], [W, H], [0, H])$ onto an arbitrary convex quadrilateral defined by 4 Control Points. Applied to pixel data via `cv2.warpPerspective`.
+_Avoid_: 2D affine transform, skew, distortion, mapping.
 
-**Sweep**:
-An AI Assist box prompt whose model (SAM3) detects every matching object in and around the boxed region, proposing many candidate Shapes from one user action. Each candidate becomes a new Shape unless Existing Shape Suppression is enabled.
-_Avoid_: propagation (model-internal term), batch detection.
+**Lighting Engine**:
+The image processing pipeline that extracts local luminance and shading gradients from the original room photo (in LAB or grayscale color space) and blends them onto the warped material texture to realistically preserve shadows, highlights, and ambient illumination.
+_Avoid_: filter, shader, brightness adjuster.
 
-**Existing Shape Suppression**:
-An optional AI Assist Setting for both point prompts and Sweeps. A candidate that matches an existing Shape highlights that Shape instead of creating a new Shape; unmatched candidates remain new Shapes. The Setting is disabled by default.
-_Avoid_: duplicate suppression, overlap suppression.
+**Luminance Extraction**:
+Calculating the relative brightness channel of the background image across the bounding polygon of a Plane to modulate the material's diffuse color without washing out texture details.
+_Avoid_: grayscale conversion, ambient map.
 
-**AI Text Prompt**:
-Bulk, text-driven Shape proposal: the user types a class name and an open-vocabulary detector (YOLO-world, SAM3) returns Shapes for every matching instance in the Image. One user action produces many candidate Shapes.
-_Avoid_: AI annotation (too vague), text-to-annotation (verbose), auto-detect.
+**Material**:
+A surface texture definition applied to a Plane. Can be loaded from an image asset or generated procedurally (e.g., `oak_hardwood`, `carrara_marble`, `slate_tile`, `herringbone`, `subway_tile`). Materials include properties such as repeat scale, surface roughness, and metallic sheen.
+_Avoid_: skin, paint, wallpaper, swatch (the swatch is the UI icon, not the texture).
 
-**Model Session**:
-A loaded ML model that backs AI Assist or AI Text Prompt. One Model Session serves many proposals across the lifetime of the app. The legacy code directory `_automation/` hosts this layer.
-_Avoid_: automation (legacy code-only term), backend, engine.
+**Renderer**:
+The end-to-end composite pipeline (`backend/app/cv/renderer.py`) that takes a room photo, a list of Planes with active Control Points, and their selected Materials, and produces the final composite image as a high-quality JPEG/PNG or base64 data URI.
+_Avoid_: drawing canvas, graphics engine.
 
-**Prompt Compatibility**:
-The prompt kinds a Model Session can answer. A model can support point, box, or text prompts independently; selecting a model does not imply compatibility with every AI Assist mode.
-_Avoid_: treating an unsupported prompt kind as an inference failure.
+---
 
-**Mask Shape**:
-A Shape whose `shape_type` is `mask` — hybrid representation combining a rectangular bounding box (2 points) with a Mask (the raster pixels) that fills the bbox. The only `shape_type` that carries dense pixel data.
-_Avoid_: raster shape, pixel polygon; do not say "mask" when you mean the whole Shape.
+### User Interface & Interaction
 
-**Mask**:
-The boolean pixel array inside a Mask Shape — one bit per pixel of the Mask Shape's bbox indicating whether the pixel belongs to the annotated region. Serialized as a base64-encoded PNG inside the Annotation File.
-_Avoid_: bitmap, raster, segmentation map (when you mean just this Shape's pixels).
+**Touch Loupe**:
+A floating high-magnification lens widget that appears above the user's fingertip or cursor during drag operations, displaying a zoomed-in view of the canvas crosshairs and the exact image pixels beneath the active Control Point.
+_Avoid_: magnifier, zoom tool, bubble lens.
 
-**Image**:
-An input image file (PNG, JPEG, TIFF, etc.) that is the subject of an Annotation. Identified by its path on disk. The in-memory pixel array used while annotating is an implementation concern and not part of this term.
-_Avoid_: photo, picture, file, frame.
+**Whole-Polygon Drag**:
+An interaction mode allowing the user to translate all vertices of a Plane or an entire Preset across the canvas simultaneously without altering their relative proportions or angles.
+_Avoid_: group move, pan polygon, batch shift.
 
-**Label List**:
-The predefined set of allowed Label strings configured for an annotation session (via the `--labels` CLI flag, a labels file, or the user config). The Label List is the *permitted vocabulary*; it is not the same as the Labels that actually appear on Shapes.
-_Avoid_: labels (means actual labels in use), label vocabulary (verbose), classes.
+**Comparison Slider**:
+An interactive split-screen divider overlaid on the canvas that allows users and clients to swipe horizontally between the original unmodified room photo and the newly rendered material replacement.
+_Avoid_: before/after divider, split view, swipe bar.
 
-### Configuration
+---
 
-**Settings**:
-The user-adjustable annotation and behavior values (auto-save, drawing colors, shortcuts, AI model, and so on). Each Setting is a *value*, not a control: the value is the source of truth (persisted in the Config File) and may be surfaced by more than one **Setting Control** at once, all bound to it and kept in sync.
-_Avoid_: preferences (only the historical menu label), config (that is the file, not the values), options.
+### Data Interoperability & Export
 
-**Setting Control**:
-A UI element bound to a Setting that displays and edits its value: a checkable menu/toolbar action, an inline dock control, or a widget in the Settings dialog. Inline controls are reserved for Settings toggled frequently or meaningful only in context; the Settings dialog is the comprehensive home that exposes every Setting. Multiple Setting Controls for one Setting stay in sync through a single apply path.
-_Avoid_: toggle (only one kind), widget, knob.
+**Labelme Bridge**:
+The headless serialization and conversion module (`backend/app/core/labelme_bridge.py`) that exports DragMeToLabel surface geometry into standard Labelme 5.x JSON format (`version`, `flags`, `shapes`, `imagePath`, `imageData`).
+_Avoid_: JSON exporter, file converter, serializer.
 
-**Preview Setting**:
-A shipped Setting offered for early use while its interaction contract or presentation may still change. It meets normal data-safety and stability requirements and graduates after one stable release cycle with no known contract defects.
-_Avoid_: beta feature, experimental option, beta setting.
+**Labelme Shape**:
+A single polygon dictionary within a standard Labelme JSON file containing `label`, `points`, `group_id`, `description`, `shape_type="polygon"`, and `flags`.
+_Avoid_: annotation entry, shape object.
 
-**Config File**:
-The on-disk YAML where Settings are persisted as sparse Overrides on top of the Default Config. Defaults to `~/.labelmerc`, but can be relocated, e.g. a `labelmerc` file beside the executable in standalone builds, or any path passed to `--config`. The file is called "config"; the values it carries are Settings.
-_Avoid_: settings file, rc file, labelmerc.
+---
 
-**Default Config**:
-The baseline Settings shipped in `labelme/config/default_config.yaml`. Read-only, and the single source of both every default value and the set of allowed keys.
-_Avoid_: defaults file, base config, schema.
+## Example Architecture Flow
 
-**Override**:
-A single Setting in the Config File whose value differs from the Default Config. The Config File holds only Overrides; resetting a Setting to its default removes its Override and keeps the file sparse.
-_Avoid_: customization, change, diff.
-
-**Window State**:
-The window geometry and dock layout persisted via Qt's `QSettings` store (the `self._window_state` attribute in code), separate from Settings and never written to the Config File. Cleared by `--reset-config`.
-_Avoid_: settings (those are the annotation/behavior values), config, layout config.
-
-## Flagged ambiguities
-
-- **`Annotation` / `LabelFile` in code**: the `Annotation` type names the in-memory **Annotation** (the whole bundle); it supersedes the former `LabelData`. `LabelFile` stays as the legacy identifier for the **Annotation File** (the on-disk form). The previously-mooted `LabelFile` → `AnnotationFile` rename remains deferred. The Qt-free codec functions (`read_label_file` / `write_label_file`) and their module (`_label_file.py`) keep the `label_file` name for now; renaming them to `read_annotation_file` / `write_annotation_file` (in an `_annotation.py` module) is the matching deferred cleanup, best done together with the `LabelFile` → `AnnotationFile` rename so the module is renamed once.
-- **Concept vs file naming is an intentional split**: the user-facing values are **Settings**, but the file that persists them is the **Config File** (`~/.labelmerc`) and the CLI flag stays `--config`. The menu entry reads "Settings…" while keeping Qt's `PreferencesRole`. Do not "unify" the file/flag/role naming to "settings".
-- **`Shape` in code is the Qt-free data model**: the `Shape` type (`_shape.py`) holds only data — `points` / `point_labels` are numpy arrays, not `QtCore.QPointF`, and it imports no PyQt5. Rendering, hit-testing, and the per-shape view state (selected, fill, highlight, colors, scale) live in the canvas layer (`_widgets/_shape_render.py` + `_widgets/canvas.py`), which computes a `ShapeRenderContext` per shape at paint time. The in-progress shape being drawn is a separate QPointF `_DraftShape` (canvas-local) that becomes a `Shape` at finalize. `visible` is the one ephemeral view flag kept on `Shape` (a plain bool, not persisted) so it survives the deepcopy-based undo/backup stack.
-
-## Example dialogue
-
-A new contributor (N) asks a maintainer (M) about a bug report.
-
-> **N:** A user filed a bug saying their annotations get wiped when they reopen an image. What's actually being wiped?
->
-> **M:** Probably the Annotation, not just one Shape. The Annotation includes the Image's Flags, every Shape on it, and the Shape Flags on each Shape. If the Annotation File didn't load, all of that is gone from view.
->
-> **N:** Is the Annotation File on disk corrupted, or is the load failing?
->
-> **M:** Check the file first. If it parses, the Annotation is fine; the UI just isn't picking it up. If it doesn't parse, the Annotation File itself is the problem.
->
-> **N:** They also said their AI shapes disappear. They use AI Text Prompt — type "person", get a bunch of Shapes.
->
-> **M:** Right. Those are still ordinary Shapes once the Model Session returns them; AI Text Prompt only produces them. After that they're stored in the Annotation File like any other Shape.
->
-> **N:** They mentioned one Shape is a Mask Shape — does that change anything?
->
-> **M:** Only the storage. A Mask Shape has a bbox plus an embedded Mask — the boolean pixel array, base64-encoded inside the Annotation File. If the file got truncated, the Mask is the most likely thing to be malformed.
->
-> **N:** Last thing — they want Shapes from one occluded car to share a `group_id`. Is that an Instance?
->
-> **M:** It's a Group. Instance segmentation is one application of grouping, but in our domain we just say Group. The Shapes share a `group_id` — that's all the data model knows about it.
+```
+[Sales Rep / Tablet Browser]
+        │
+        ▼ (1) Drag Control Points on Canvas with Touch Loupe
+[Interactive Frontend UI]
+        │
+        ▼ (2) POST /api/v1/preview (image_b64, planes, materials)
+[FastAPI REST Backend]
+        │
+        ├──► (3) Homography Matrix Calculation (cv2.getPerspectiveTransform)
+        ├──► (4) Texture Warping (cv2.warpPerspective)
+        ├──► (5) Lighting & Shadow Extraction (LAB L-channel blending)
+        └──► (6) Alpha Mask Composite
+        │
+        ▼ (7) Base64 Preview Response
+[Canvas Comparison Slider Display]
+```
