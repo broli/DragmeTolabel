@@ -64,6 +64,30 @@ class PreviewResponse(BaseModel):
     message: str | None = None
 
 
+class SnapPoint(BaseModel):
+    x: float = Field(..., description="X coordinate in pixels")
+    y: float = Field(..., description="Y coordinate in pixels")
+    score: float = Field(..., description="Confidence score [0.0, 1.0]")
+    landmark_type: str = Field(
+        default="junction", description="Semantic landmark type (corner_crease, tub_rim, baseboard, junction)"
+    )
+
+
+class AutoFitRequest(BaseModel):
+    image_base64: str = Field(..., description="Base64 encoded room photo (JPEG/PNG)")
+    preset_id: str = Field(..., description="Preset ID to fit (e.g. 'corner_bath', 'alcove_bath', 'floor', 'ceiling')")
+
+
+class AutoFitResponse(BaseModel):
+    success: bool
+    preset_id: str
+    points: list[list[float]] = Field(..., description="Fitted mesh coordinates in image pixel space [[x, y], ...]")
+    confidence: float = Field(..., description="Overall fit confidence score [0.0, 1.0]")
+    execution_time_ms: float = Field(..., description="Inference execution time in milliseconds")
+    landmarks: dict[str, Any] = Field(default_factory=dict, description="Detected key architectural landmarks")
+    message: str | None = None
+
+
 class LabelmeShapeDict(BaseModel):
     label: str
     points: list[list[float]]

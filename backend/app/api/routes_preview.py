@@ -1,14 +1,39 @@
 """
-Preview & Export API Routes for DragmeTolabel.
+Preview, Export & Auto-Fit API Routes for DragmeTolabel.
 """
 
 from fastapi import APIRouter, HTTPException
 
 from ..core.labelme_bridge import export_to_labelme_json
-from ..core.schemas import PreviewRequest, PreviewResponse
+from ..core.schemas import AutoFitRequest, AutoFitResponse, PreviewRequest, PreviewResponse
 from ..cv.renderer import decode_base64_image, render_preview
+from ..cv.solvers import SolverRegistry
 
 router = APIRouter(prefix="", tags=["Preview & Export"])
+
+
+@router.post("/autofit-preset", response_model=AutoFitResponse)
+@router.post("/autofit", response_model=AutoFitResponse)
+async def autofit_preset(request: AutoFitRequest) -> AutoFitResponse:
+    """
+    Automatically detects physical room corners/boundaries and computes fitted polygon
+    coordinates for the requested preset geometry in real time.
+    """
+    solver = SolverRegistry.get_solver(request.preset_id)
+    if solver is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No geometry solver found for preset '{request.preset_id}'. Available: {SolverRegistry.list_preset_ids()}",
+        )
+
+    try:
+        img_bgr = decode_base64_image(request.image_base64)
+        response = solver.solve(img_bgr)
+        return response
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auto-fit solver error: {str(e)}")
 
 
 @router.post("/preview", response_model=PreviewResponse)

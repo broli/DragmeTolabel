@@ -78,6 +78,18 @@ export class PolygonCanvas {
     }
   }
 
+  setCustomPoints(points, recordHistory = true) {
+    if (!this.image || !points || !points.length) return;
+    this.points = JSON.parse(JSON.stringify(points));
+    if (recordHistory) {
+      this.saveHistory();
+    }
+    if (this.onPointsChanged) {
+      this.onPointsChanged(this.points);
+    }
+    this.render();
+  }
+
   resetPoints() {
     if (this.preset) {
       this.applyPreset(this.preset, true);

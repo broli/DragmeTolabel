@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Modular Geometry Auto-Fit CV Engine**: Plug-and-play architecture for architectural surface preset solvers (`BasePresetSolver`, `SolverRegistry`, `@register_solver`).
+- **Zero-Drag Preset Solvers**:
+  - `CornerBathSolver`: Detects 2-wall vertical corner crease seams and horizontal tub rim apex.
+  - `AlcoveBathSolver`: Detects 3-wall recessed alcove corner creases and back tub ledge.
+  - `FloorSolver`: Detects wall-floor baseboard seams and perspective receding ground angles.
+  - `CeilingSolver`: Detects crown molding and overhead perimeter.
+  - `CaliBathSolver`: Modular solver template for walk-in shower configurations.
+- **REST Endpoints**: Added `POST /api/v1/autofit-preset` (and alias `/api/v1/autofit`) for real-time corner autodetection on image load.
+- **Frontend Auto-Alignment**: Automatic canvas corner fitting upon photo upload / sample selection, plus a manual "Auto-Fit" header action button.
+- **Geometry & Perspective Utilities**: Pure Python and NumPy modules `geometry_utils.py` and `perspective.py` for line intersections, quad convexity checks, polygon area, and 1D sub-pixel peak interpolation.
+- **Comprehensive Pytest Suite**: Added `tests/test_solvers.py` covering registry discovery, geometry math, synthetic room solvers, and REST endpoints.
+
 ## [0.2.0] - 2026-08-20
 
 ### Added
