@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DragmeTolabel API",
     description="Computer Vision & Polygon Surface Replacement Web Backend for Sales Reps",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 

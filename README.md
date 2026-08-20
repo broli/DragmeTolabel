@@ -9,7 +9,7 @@
 <div align="center">
   <a href="https://github.com/broli/DragmeTolabel/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen.svg" alt="CI"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue.svg" alt="Python Versions"></a>
-  <a href="https://github.com/broli/DragmeTolabel"><img src="https://img.shields.io/badge/version-0.1.0--alpha-orange.svg" alt="Version"></a>
+  <a href="https://github.com/broli/DragmeTolabel"><img src="https://img.shields.io/badge/version-0.2.0--alpha-orange.svg" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-lightgrey.svg" alt="License"></a>
 </div>
 

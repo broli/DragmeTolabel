@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-20
+
+### Added
+
+- **DragMeToLabel Alpha 0.2 Release**: Full modernization and architectural restructuring of the DragMeToLabel web visualizer and CV backend.
+- **RESTful Endpoints & Unified App Lifespan**: Added lifespan management in FastAPI, texture initialization hooks, and `/api/v1/export-labelme` headless bridge.
+- **Clean PEP 621 Packaging**: Modernized `pyproject.toml` with `dragmetolabel` CLI entrypoint and pure Python backend packaging.
+- **Comprehensive Verification Matrix**: Added end-to-end backend tests covering presets, materials synthesis, homography rendering, multi-plane bath rendering, and Labelme 5.x bridge export.
+- **Consolidated Documentation**: Integrated architectural specification, domain glossary, and git SOP.
+
+### Changed
+
+- **Codebase Modernization**: Pruned legacy desktop Qt bindings, translations, and desktop test artifacts to streamline repo footprint.
+
 ## [0.1.0] - 2026-08-20
 
 ### Added
