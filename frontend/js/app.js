@@ -2,7 +2,7 @@
  * DragmeTolabel - Main Application Coordinator
  */
 
-import { fetchPresets, fetchMaterials, requestPreview, exportLabelmeJSON } from './api.js';
+import { fetchPresets, fetchMaterials, requestPreview, exportLabelmeJSON, autoFitPreset } from './api.js';
 import { renderPresetsTray, setActivePresetCard } from './presets.js';
 import { PolygonCanvas } from './canvas.js';
 import { TouchLoupe } from './loupe.js';
@@ -128,7 +128,7 @@ class DragmeToLabelApp {
     });
   }
 
-  selectPreset(presetId) {
+  async selectPreset(presetId) {
     const preset = this.presets.find((p) => p.id === presetId);
     if (!preset || !preset.enabled) return;
 
@@ -139,6 +139,32 @@ class DragmeToLabelApp {
     this.updateBadges();
     this.updateHintPosition();
     this.showToast(`Selected ${preset.name}`);
+
+    // Auto-fit new preset geometry to active room photo
+    if (this.hasLoadedImage) {
+      await this.triggerAutoFit(presetId, true);
+    }
+  }
+
+  async triggerAutoFit(presetId = null, silent = false) {
+    const targetPresetId = presetId || this.activePresetId;
+    if (!this.hasLoadedImage) return;
+
+    try {
+      const imgBase64 = this.canvas.getImageBase64();
+      if (!imgBase64) return;
+
+      const result = await autoFitPreset(imgBase64, targetPresetId);
+      if (result && result.success && result.points && result.points.length > 0) {
+        this.canvas.setCustomPoints(result.points);
+        if (!silent) {
+          const confPct = Math.round((result.confidence || 0.8) * 100);
+          this.showToast(`✨ Auto-aligned ${this.activePresetId} corners (${confPct}% confidence)`);
+        }
+      }
+    } catch (err) {
+      console.warn('Auto-fit solver notification:', err);
+    }
   }
 
   selectMaterial(materialId) {
@@ -199,13 +225,13 @@ class DragmeToLabelApp {
         this.currentSamplePhoto = null;
 
         if (targetPreset) {
-          this.selectPreset(targetPreset);
+          await this.selectPreset(targetPreset);
         } else {
           this.updateHintPosition();
+          await this.triggerAutoFit(this.activePresetId, false);
         }
 
         this.hideOnboardingModal();
-        this.showToast('Photo loaded! Drag points to fit surface.');
       } catch (err) {
         console.error('Failed to load image into canvas:', err);
         this.showToast('Failed to load selected photo.');
@@ -220,12 +246,12 @@ class DragmeToLabelApp {
       await this.canvas.loadImage(sampleUrl);
       this.hasLoadedImage = true;
       if (targetPreset) {
-        this.selectPreset(targetPreset);
+        await this.selectPreset(targetPreset);
       } else {
         this.updateHintPosition();
+        await this.triggerAutoFit(this.activePresetId, false);
       }
       this.hideOnboardingModal();
-      this.showToast('Demo room photo loaded!');
     } catch (err) {
       console.error('Sample loading error:', err);
       this.showToast('Failed to load sample photo.');
@@ -420,7 +446,15 @@ class DragmeToLabelApp {
       });
     }
 
-    // 11. Preview Action in Header
+    // 11. Auto-Fit Action in Header
+    const btnAutoFit = document.getElementById('btn-autofit');
+    if (btnAutoFit) {
+      btnAutoFit.addEventListener('click', () => {
+        this.triggerAutoFit(this.activePresetId, false);
+      });
+    }
+
+    // 12. Preview Action in Header
     const btnPreview = document.getElementById('btn-preview');
     if (btnPreview) {
       btnPreview.addEventListener('click', () => {
@@ -428,7 +462,7 @@ class DragmeToLabelApp {
       });
     }
 
-    // 12. Export Action in Header
+    // 13. Export Action in Header
     const btnExport = document.getElementById('btn-export-json');
     if (btnExport) {
       btnExport.addEventListener('click', () => {
