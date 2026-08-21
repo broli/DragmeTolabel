@@ -162,9 +162,9 @@ class AlcoveBathSolver(BasePresetSolver):
         # 6. 2D Candidate Dot Generation and Dynamic Rule Filtering
         elevation_bands = {
             "Band_A_Ceiling": (0.00 * h, y_header),
-            "Band_B_BackTop": (max(0.0, y_header - 0.08 * h_wet), y_header + 0.20 * h_wet),
-            "Band_C_BackBase": (max(0.40 * h, y_base_target - 0.12 * h_wet), min(h, y_base_target + 0.12 * h_wet)),
-            "Band_D_FrontBase": (max(0.60 * h, y_floor - 0.15 * h_wet), min(h, y_floor + 0.15 * h_wet)),
+            "Band_B_BackTop": (max(0.0, y_header - 0.12 * h_wet), y_header + 0.25 * h_back_wall),
+            "Band_C_BackBase": (max(0.0, y_base_target - 0.15 * h_back_wall), min(h, y_base_target + 0.15 * h_back_wall)),
+            "Band_D_FrontBase": (max(0.0, y_floor - 0.15 * h_wet), min(h, y_floor + 0.15 * h_wet)),
         }
         landmarks["elevation_bands"] = {
             k: [round(v[0], 1), round(v[1], 1)] for k, v in elevation_bands.items()
@@ -205,13 +205,13 @@ class AlcoveBathSolver(BasePresetSolver):
         x3, y3 = (p3["x"], p3["y"]) if p3 else (min(0.98 * w, x2 + 0.20 * w), 0.08 * h)
 
         # P4: Left-Front Floor Base (Deepest floor point on left in Band D)
-        cand_p4 = [d for d in band_d if d["x"] <= x1 + 0.05 * w and d["y"] >= 0.80 * h]
+        cand_p4 = [d for d in band_d if d["x"] <= x1 + 0.05 * w and d["y"] >= 0.75 * h]
         cand_p4 = sorted(cand_p4, key=lambda d: -d["y"])
         p4 = cand_p4[0] if cand_p4 else None
         x4, y4 = (p4["x"], p4["y"]) if p4 else (max(0.04 * w, x0 + 0.08 * w), 0.91 * h)
 
         # P7: Right-Front Floor Base (Deepest floor point on right in Band D)
-        cand_p7 = [d for d in band_d if d["x"] >= x2 - 0.05 * w and d["y"] >= 0.80 * h]
+        cand_p7 = [d for d in band_d if d["x"] >= x2 - 0.05 * w and d["y"] >= 0.75 * h]
         cand_p7 = sorted(cand_p7, key=lambda d: -d["y"])
         p7 = cand_p7[0] if cand_p7 else None
         x7, y7 = (p7["x"], p7["y"]) if p7 else (min(0.96 * w, x3 - 0.08 * w), 0.91 * h)
@@ -234,8 +234,14 @@ class AlcoveBathSolver(BasePresetSolver):
         header_angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
 
         # Evaluate candidate pairs (p5, p6) in Band C
-        cand_p5_pool = [d for d in band_c if d["x"] < x2 - 0.10 * w and d["y"] < y4]
-        cand_p6_pool = [d for d in band_c if d["x"] > x1 + 0.10 * w and d["y"] < y7]
+        cand_p5_pool = [
+            d for d in band_c
+            if d["x"] < x2 - 0.10 * w and abs(d["y"] - y5_target) <= 0.18 * h_back_wall and d["y"] < y4
+        ]
+        cand_p6_pool = [
+            d for d in band_c
+            if d["x"] > x1 + 0.10 * w and abs(d["y"] - y6_target) <= 0.18 * h_back_wall and d["y"] < y7
+        ]
 
         best_pair = None
         best_cost = float("inf")

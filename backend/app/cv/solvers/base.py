@@ -335,22 +335,17 @@ class BasePresetSolver(ABC):
                 dot["discard_reason"] = f"Rule 3: Central Floor Drain / Clutter (Y={y:.0f}px, center X)"
                 continue
 
-            # Rule 4: Match elevation band
+            # Rule 4: Match elevation band for graph role assignment
             matched_band = None
             for b_name, (y_min, y_max) in elevation_bands.items():
                 if y_min <= y <= y_max:
                     matched_band = b_name
+                    classified_bands[matched_band].append(dot)
                     break
 
-            if not matched_band:
-                dot["status"] = "DISCARDED"
-                dot["discard_reason"] = f"Rule 4: Elevation gap (Y={y:.0f}px outside valid structural bands)"
-                continue
-
             dot["status"] = "KEPT"
-            dot["role"] = matched_band
-            dot["discard_reason"] = "Passed: Valid elevation candidate"
-            classified_bands[matched_band].append(dot)
+            dot["role"] = matched_band if matched_band else "STRUCTURAL_TRANSITION"
+            dot["discard_reason"] = "Passed: Valid structural candidate"
 
         return candidates, classified_bands
 
