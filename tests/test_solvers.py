@@ -154,8 +154,8 @@ def test_alcove_bath_solver_synthetic_room():
     assert res.preset_id == "alcove_bath"
     assert len(res.points) == 8
     assert res.confidence >= 0.60
-    assert "back_crease_left_x" in res.landmarks
-    assert "back_crease_right_x" in res.landmarks
+    assert "back_left_crease_x" in res.landmarks
+    assert "back_right_crease_x" in res.landmarks
 
 
 def test_floor_solver_synthetic_room():
@@ -211,3 +211,162 @@ def test_api_autofit_endpoint():
     req_bad = {"image_base64": img_b64, "preset_id": "nonexistent_preset"}
     resp_bad = client.post("/api/v1/autofit-preset", json=req_bad)
     assert resp_bad.status_code == 404
+
+
+def test_real_bath_image_workflow():
+    """Test full auto-fit and rendering workflow on real photo loaded from disk."""
+    import os
+
+    from backend.app.core.schemas import PreviewRequest
+    from backend.app.cv.renderer import render_preview
+
+    photo_path = "/home/carlos/Projects/Antigravity/Visu-AI-lizer/assets/bath pics/Alan Fukuda IMG_7805.jpg"
+    if not os.path.exists(photo_path):
+        photo_path = "frontend/assets/samples/alan_fukuda_bath.jpg"
+
+    assert os.path.exists(photo_path), f"Real test photo not found at {photo_path}"
+
+    img = cv2.imread(photo_path)
+    assert img is not None
+    assert img.shape[0] > 0 and img.shape[1] > 0
+
+    solver = SolverRegistry.get_solver("corner_bath")
+    assert solver is not None
+
+    res = solver.solve(img)
+    assert res.success is True
+    assert len(res.points) == 6
+    assert res.confidence > 0.50
+
+    # Test rendering preview with fitted coordinates
+    img_b64 = encode_image_base64(img)
+    prev_req = PreviewRequest(
+        image_base64=img_b64,
+        preset_id="corner_bath",
+        points=res.points,
+        material_id="carrara_marble",
+        lighting_intensity=0.85,
+        tile_scale=1.0,
+    )
+    prev_res = render_preview(prev_req)
+    assert prev_res.success is True
+    assert prev_res.planes_rendered == 2
+
+
+def test_candidate_dot_generation_and_discard_rules():
+    """Verify multi-source candidate generation and architectural discard rule categorization."""
+    from backend.app.cv.perspective import extract_structural_lines
+    from backend.app.cv.solvers.alcove_bath import AlcoveBathSolver
+
+    h, w = 1000, 800
+    img = np.full((h, w, 3), 220, dtype=np.uint8)
+
+    # Add corner lines
+    cv2.line(img, (200, 100), (200, 800), (20, 20, 20), 3)  # Left corner
+    cv2.line(img, (600, 100), (600, 800), (20, 20, 20), 3)  # Right corner
+    cv2.line(img, (200, 200), (600, 200), (20, 20, 20), 3)  # Header
+    cv2.line(img, (200, 700), (600, 700), (20, 20, 20), 3)  # Tub rim
+    cv2.line(img, (350, 450), (450, 450), (20, 20, 20), 4)  # Valve in deadband (Y=450)
+
+    lines = extract_structural_lines(img, min_length=15.0)
+    solver = AlcoveBathSolver()
+    candidates = solver.extract_all_candidate_dots(img, lines, (400.0, 500.0))
+    assert len(candidates) > 0
+
+    elevation_bands = {
+        "Band_A_Ceiling": (0.00 * h, 0.16 * h),
+        "Band_B_BackTop": (0.12 * h, 0.35 * h),
+        "Band_C_BackTub": (0.58 * h, 0.76 * h),
+        "Band_D_FrontBase": (0.78 * h, 0.98 * h),
+    }
+    evaluated, classified = solver.evaluate_rules_and_filter_candidates(
+        candidates, (h, w, 3), (400.0, 500.0), elevation_bands
+    )
+
+    # Check deadband discard rule
+    deadband_discarded = [d for d in evaluated if "Rule 2" in d["discard_reason"]]
+    assert len(deadband_discarded) > 0
+    for d in deadband_discarded:
+        assert 0.35 * h <= d["y"] <= 0.56 * h
+
+    # Run solver solve and check debug info
+    res = solver.solve(img)
+    assert res.success is True
+    assert res.debug_info is not None
+    assert "candidate_dots_count" in res.debug_info
+    assert res.debug_info["candidate_dots_count"] > 0
+    assert "candidates_kept" in res.debug_info
+    assert "candidates_discarded" in res.debug_info
+
+
+def test_continuous_kde_vertical_creases():
+    """Test continuous Gaussian KDE vertical crease estimation with NMS peak suppression."""
+    from backend.app.cv.perspective import estimate_vertical_creases, extract_structural_lines
+
+    h, w = 1200, 1000
+    img = np.full((h, w, 3), 240, dtype=np.uint8)
+
+    # Draw 3 vertical seams
+    cv2.line(img, (250, 50), (250, 1150), (10, 10, 10), 4)
+    cv2.line(img, (500, 50), (500, 1150), (10, 10, 10), 4)
+    cv2.line(img, (800, 50), (800, 1150), (10, 10, 10), 4)
+
+    lines = extract_structural_lines(img, min_length=20.0)
+    creases = estimate_vertical_creases(lines, w, min_length_ratio=0.05, min_peak_distance=80.0)
+
+    assert len(creases) >= 3
+    # Check that peaks match within 15px
+    assert any(abs(c - 250) < 15 for c in creases)
+    assert any(abs(c - 500) < 15 for c in creases)
+    assert any(abs(c - 800) < 15 for c in creases)
+
+
+def test_dynamic_bath_photos_library():
+    """
+    Dynamically discover and benchmark all photos placed in tests/fixtures/bath_photos/.
+    Runs solver, verifies successful mesh generation, and benchmarks against ground truth if present.
+    """
+    import json
+    from pathlib import Path
+
+    fixtures_dir = Path("tests/fixtures/bath_photos")
+    if not fixtures_dir.exists():
+        return
+
+    valid_extensions = {".jpg", ".jpeg", ".png"}
+    photo_files = [f for f in fixtures_dir.iterdir() if f.suffix.lower() in valid_extensions]
+
+    if not photo_files:
+        return
+
+    for photo_path in photo_files:
+        img = cv2.imread(str(photo_path))
+        assert img is not None, f"Failed to read image at {photo_path}"
+
+        json_path = photo_path.with_suffix(".json")
+        preset_id = "alcove_bath"
+        gt_points = None
+
+        if json_path.exists():
+            with open(json_path) as f:
+                data = json.load(f)
+                preset_id = data.get("preset_id", "alcove_bath")
+                gt_points = data.get("points")
+
+        solver = SolverRegistry.get_solver(preset_id)
+        if solver is None:
+            solver = SolverRegistry.get_solver("alcove_bath")
+        assert solver is not None
+
+        res = solver.solve(img)
+        assert res.success is True
+        assert len(res.points) == solver.preset_definition.point_count
+        assert res.confidence >= 0.40
+
+        if gt_points and len(gt_points) == len(res.points):
+            errors = [
+                ((res.points[i][0] - gt_points[i][0]) ** 2 + (res.points[i][1] - gt_points[i][1]) ** 2) ** 0.5
+                for i in range(len(gt_points))
+            ]
+            mean_error = sum(errors) / len(errors)
+            assert mean_error < 450.0, f"Mean error {mean_error:.1f}px exceeds threshold on {photo_path.name}"

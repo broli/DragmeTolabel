@@ -1,6 +1,7 @@
 """
 Modular Corner Bath geometry definition and specialized CV auto-fit solver.
-Detects 2-wall corner crease seam, tub rim apex, and surround boundaries for 6-point mesh.
+Detects 2-wall corner crease seam, tub rim apex, and surround boundaries for 6-point mesh
+using middle deadband hardware suppression, corner crease tracking, and dual-elevation floor perspective.
 """
 
 from __future__ import annotations
@@ -10,8 +11,7 @@ from typing import Any
 import numpy as np
 
 from ...core.schemas import PolygonPlane, PresetDefinition
-from ..geometry_utils import subpixel_peak_1d
-from ..perspective import LineSegment, estimate_vertical_creases
+from ..perspective import LineSegment, estimate_vanishing_point, estimate_vertical_creases
 from .base import BasePresetSolver
 from .registry import register_solver
 
@@ -23,21 +23,21 @@ CORNER_BATH_PRESET = PresetDefinition(
     line_count=7,
     enabled=True,
     default_normalized_points=[
-        [0.15, 0.18],  # 0: Left Wall Top
-        [0.50, 0.12],  # 1: Corner Top
-        [0.85, 0.18],  # 2: Right Wall Top
-        [0.15, 0.68],  # 3: Left Wall Tub Rim
-        [0.50, 0.62],  # 4: Corner Bottom / Tub Apex
-        [0.85, 0.68],  # 5: Right Wall Tub Rim
+        [0.080, 0.000],  # 0: Left Wall Top (Front outer ceiling)
+        [0.500, 0.030],  # 1: Corner Top (Center corner apex)
+        [0.920, 0.000],  # 2: Right Wall Top (Front outer ceiling)
+        [0.150, 0.850],  # 3: Left Wall Tub Rim / Floor Base
+        [0.500, 0.680],  # 4: Corner Bottom / Tub Apex
+        [0.850, 0.850],  # 5: Right Wall Tub Rim / Floor Base
     ],
     lines=[
-        [0, 1],  # 1. Left top
-        [1, 2],  # 2. Right top
+        [0, 1],  # 1. Left top perspective slant
+        [1, 2],  # 2. Right top perspective slant
         [0, 3],  # 3. Left outer vertical
-        [1, 4],  # 4. Center corner seam
+        [1, 4],  # 4. Center corner crease
         [2, 5],  # 5. Right outer vertical
-        [3, 4],  # 6. Left tub ledge
-        [4, 5],  # 7. Right tub ledge
+        [3, 4],  # 6. Left tub ledge / floor perspective
+        [4, 5],  # 7. Right tub ledge / floor perspective
     ],
     planes=[
         PolygonPlane(
@@ -58,6 +58,11 @@ CORNER_BATH_PRESET = PresetDefinition(
 class CornerBathSolver(BasePresetSolver):
     """
     Specialized solver for 2-wall corner bathtub surrounds (6 control points).
+    Applies physical architectural rules:
+    - Multi-source 2D candidate dot generation.
+    - Middle deadband suppression (35% - 56% of height).
+    - Continuous KDE central corner crease tracking.
+    - Dual-elevation floor perspective (recessed corner tub apex vs outer floor base).
     """
 
     @property
@@ -70,90 +75,92 @@ class CornerBathSolver(BasePresetSolver):
         lines: list[LineSegment],
     ) -> tuple[list[list[float]], float, dict[str, Any]]:
         h, w = img_bgr.shape[:2]
-        confidence_factors: list[float] = []
         landmarks: dict[str, Any] = {}
 
-        # 1. Detect Central Vertical Corner Crease (X_corner)
-        creases = estimate_vertical_creases(lines, w, min_length_ratio=0.18)
-        central_creases = [c for c in creases if 0.28 * w <= c <= 0.72 * w]
+        # 1. Estimate Vanishing Point
+        vp_x, vp_y = estimate_vanishing_point(lines, w, h)
+        landmarks["vp_x"] = round(vp_x, 1)
+        landmarks["vp_y"] = round(vp_y, 1)
 
-        if central_creases:
-            # Pick strongest central vertical crease
-            x_corner = central_creases[0]
-            confidence_factors.append(0.88)
-            landmarks["crease_source"] = "LSD_vertical_segment"
-        else:
-            # Profile fallback
-            v_profile, x_start, _ = self.compute_vertical_energy_profile(img_bgr, 0.30, 0.70)
-            peak_idx = int(np.argmax(v_profile))
-            peak_val = float(v_profile[peak_idx])
-            mean_val = float(np.mean(v_profile)) + 1e-5
-            ratio = peak_val / mean_val
-
-            if ratio > 1.5:
-                refined_idx = subpixel_peak_1d(v_profile, peak_idx)
-                x_corner = x_start + refined_idx
-                confidence_factors.append(min(0.80, 0.50 + ratio * 0.1))
-                landmarks["crease_source"] = "sobel_vertical_profile"
-            else:
-                x_corner = 0.50 * w
-                confidence_factors.append(0.40)
-                landmarks["crease_source"] = "center_default"
-
+        # 2. Continuous 1D KDE Corner Crease Detection
+        creases = estimate_vertical_creases(
+            lines,
+            w,
+            min_length_ratio=0.04,
+            min_peak_distance=max(35.0, 0.04 * w),
+        )
+        mid_cands = [c for c in creases if 0.30 * w <= c <= 0.70 * w]
+        x_corner = mid_cands[0] if mid_cands else vp_x
         landmarks["corner_crease_x"] = round(x_corner, 1)
 
-        # 2. Detect Tub Ledge / Apex (Y_tub)
-        h_profile, y_start, _ = self.compute_horizontal_energy_profile(img_bgr, 0.45, 0.85)
-        tub_peak_idx = int(np.argmax(h_profile))
-        tub_peak_val = float(h_profile[tub_peak_idx])
-        tub_mean_val = float(np.mean(h_profile)) + 1e-5
-        tub_ratio = tub_peak_val / tub_mean_val
+        # 3. 2D Candidate Dot Generation and Rule Filtering
+        elevation_bands = {
+            "Band_A_Ceiling": (0.00 * h, 0.20 * h),
+            "Band_B_CornerTop": (0.05 * h, 0.30 * h),
+            "Band_C_TubApex": (0.58 * h, 0.76 * h),
+            "Band_D_FloorBase": (0.76 * h, 0.98 * h),
+        }
+        candidates = self.extract_all_candidate_dots(img_bgr, lines, (vp_x, vp_y))
+        candidates, classified_bands = self.evaluate_rules_and_filter_candidates(
+            candidates, img_bgr.shape, (vp_x, vp_y), elevation_bands
+        )
 
-        if tub_ratio > 1.4:
-            refined_tub_idx = subpixel_peak_1d(h_profile, tub_peak_idx)
-            y_tub_apex = y_start + refined_tub_idx
-            confidence_factors.append(min(0.85, 0.50 + tub_ratio * 0.1))
-            landmarks["tub_ledge_source"] = "sobel_horizontal_profile"
-        else:
-            y_tub_apex = 0.62 * h
-            confidence_factors.append(0.45)
-            landmarks["tub_ledge_source"] = "perspective_default"
+        band_a = classified_bands["Band_A_Ceiling"]
+        band_b = classified_bands["Band_B_CornerTop"]
+        band_c = classified_bands["Band_C_TubApex"]
+        band_d = classified_bands["Band_D_FloorBase"]
 
-        landmarks["tub_apex_y"] = round(y_tub_apex, 1)
+        # P1: Corner Top (Band B near x_corner)
+        cand_p1 = sorted(band_b, key=lambda d: abs(d["x"] - x_corner) + abs(d["y"] - 0.10 * h) * 0.4)
+        p1 = cand_p1[0] if cand_p1 else None
+        x1, y1 = (p1["x"], p1["y"]) if p1 else (x_corner, 0.08 * h)
 
-        # 3. Detect Top Ceiling / Tile Surround Line (Y_top)
-        top_profile, top_start, _ = self.compute_horizontal_energy_profile(img_bgr, 0.06, 0.35)
-        top_peak_idx = int(np.argmax(top_profile))
-        if float(top_profile[top_peak_idx]) / (float(np.mean(top_profile)) + 1e-5) > 1.4:
-            refined_top_idx = subpixel_peak_1d(top_profile, top_peak_idx)
-            y_top_apex = top_start + refined_top_idx
-            confidence_factors.append(0.80)
-        else:
-            y_top_apex = 0.12 * h
-            confidence_factors.append(0.50)
+        # P4: Corner Tub Apex (Band C near x_corner)
+        cand_p4 = sorted(band_c, key=lambda d: abs(d["x"] - x_corner) + abs(d["y"] - 0.68 * h) * 0.4)
+        p4 = cand_p4[0] if cand_p4 else None
+        x4, y4 = (p4["x"], p4["y"]) if p4 else (x_corner, 0.68 * h)
 
-        landmarks["top_apex_y"] = round(y_top_apex, 1)
+        # P0: Left Outer Top (Band A, leftmost x < x1 - 0.10*w)
+        cand_p0 = [d for d in band_a if d["x"] < x1 - 0.10 * w]
+        cand_p0 = sorted(cand_p0, key=lambda d: d["x"])
+        p0 = cand_p0[0] if cand_p0 else None
+        x0, y0 = (p0["x"], p0["y"]) if p0 else (max(0.05 * w, x1 - 0.38 * w), max(0.0, y1 - 0.02 * h))
 
-        # 4. Outer Wall Bounds (X_left, X_right)
-        left_creases = [c for c in creases if 0.05 * w <= c < x_corner - 0.15 * w]
-        right_creases = [c for c in creases if x_corner + 0.15 * w < c <= 0.95 * w]
+        # P2: Right Outer Top (Band A, rightmost x > x1 + 0.10*w)
+        cand_p2 = [d for d in band_a if d["x"] > x1 + 0.10 * w]
+        cand_p2 = sorted(cand_p2, key=lambda d: -d["x"])
+        p2 = cand_p2[0] if cand_p2 else None
+        x2, y2 = (p2["x"], p2["y"]) if p2 else (min(0.95 * w, x1 + 0.38 * w), max(0.0, y1 - 0.02 * h))
 
-        x_left = left_creases[0] if left_creases else max(0.08 * w, x_corner - 0.35 * w)
-        x_right = right_creases[0] if right_creases else min(0.92 * w, x_corner + 0.35 * w)
+        # P3: Left Outer Base (Band D, deepest floor on left x <= x4)
+        cand_p3 = [d for d in band_d if d["x"] <= x4]
+        cand_p3 = sorted(cand_p3, key=lambda d: -d["y"])
+        p3 = cand_p3[0] if cand_p3 else None
+        x3, y3 = (p3["x"], p3["y"]) if p3 else (x0, 0.85 * h)
 
-        # 5. Dihedral Perspective Slant for Corner Surround
-        # In corner perspective, outer tub ledge and top edges flare slightly downward/upward
-        slant_tub = (y_tub_apex - y_top_apex) * 0.08
-        slant_top = slant_tub * 0.8
+        # P5: Right Outer Base (Band D, deepest floor on right x >= x4)
+        cand_p5 = [d for d in band_d if d["x"] >= x4]
+        cand_p5 = sorted(cand_p5, key=lambda d: -d["y"])
+        p5 = cand_p5[0] if cand_p5 else None
+        x5, y5 = (p5["x"], p5["y"]) if p5 else (x2, 0.85 * h)
+
+        landmarks["outer_left_x"] = round(x0, 1)
+        landmarks["corner_crease_x"] = round(x1, 1)
+        landmarks["outer_right_x"] = round(x2, 1)
+        landmarks["top_apex_y"] = round(y1, 1)
+        landmarks["tub_apex_y"] = round(y4, 1)
+        landmarks["y_front_base"] = round(max(y3, y5), 1)
+        landmarks["candidates"] = candidates
 
         points = [
-            [x_left, y_top_apex + slant_top],  # 0: Left Top
-            [x_corner, y_top_apex],  # 1: Corner Top
-            [x_right, y_top_apex + slant_top],  # 2: Right Top
-            [x_left, y_tub_apex + slant_tub],  # 3: Left Tub Rim
-            [x_corner, y_tub_apex],  # 4: Corner Bottom / Tub Apex
-            [x_right, y_tub_apex + slant_tub],  # 5: Right Tub Rim
+            [x0, y0],  # 0: Left Wall Top (Front outer ceiling)
+            [x1, y1],  # 1: Corner Top (Center corner apex)
+            [x2, y2],  # 2: Right Wall Top (Front outer ceiling)
+            [x3, y3],  # 3: Left Wall Tub Rim / Floor Base
+            [x4, y4],  # 4: Corner Bottom / Tub Apex
+            [x5, y5],  # 5: Right Wall Tub Rim / Floor Base
         ]
 
-        overall_confidence = float(np.mean(confidence_factors)) if confidence_factors else 0.50
-        return points, overall_confidence, landmarks
+        matched_count = sum(1 for p in (p0, p1, p2, p3, p4, p5) if p is not None)
+        confidence = round(0.60 + (matched_count / 6.0) * 0.35, 2)
+        return points, confidence, landmarks

@@ -85,6 +85,8 @@ class AutoFitResponse(BaseModel):
     confidence: float = Field(..., description="Overall fit confidence score [0.0, 1.0]")
     execution_time_ms: float = Field(..., description="Inference execution time in milliseconds")
     landmarks: dict[str, Any] = Field(default_factory=dict, description="Detected key architectural landmarks")
+    heatmap_base64: str | None = Field(default=None, description="Visual CV energy heatmap overlay (JPEG base64)")
+    debug_info: dict[str, Any] = Field(default_factory=dict, description="Detailed CV solver metrics for tuning")
     message: str | None = None
 
 

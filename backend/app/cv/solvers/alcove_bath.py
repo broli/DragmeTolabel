@@ -1,6 +1,7 @@
 """
 Modular Alcove Bath geometry definition and specialized CV auto-fit solver.
-Detects 3-wall recessed alcove boundaries, dual vertical corner creases, and tub surround ledge.
+Detects 3-wall recessed alcove boundaries, dual vertical corner creases, and tub/pan surround ledge
+using 4-column vertical clustering, middle deadband hardware suppression, and dual-elevation floor perspective.
 """
 
 from __future__ import annotations
@@ -10,8 +11,7 @@ from typing import Any
 import numpy as np
 
 from ...core.schemas import PolygonPlane, PresetDefinition
-from ..geometry_utils import subpixel_peak_1d
-from ..perspective import LineSegment, estimate_vertical_creases
+from ..perspective import LineSegment, estimate_vanishing_point, estimate_vertical_creases
 from .base import BasePresetSolver
 from .registry import register_solver
 
@@ -23,26 +23,26 @@ ALCOVE_BATH_PRESET = PresetDefinition(
     line_count=10,
     enabled=True,
     default_normalized_points=[
-        [0.14, 0.16],  # 0: Left-Front Top
-        [0.34, 0.22],  # 1: Back-Left Top
-        [0.66, 0.22],  # 2: Back-Right Top
-        [0.86, 0.16],  # 3: Right-Front Top
-        [0.14, 0.72],  # 4: Left-Front Bottom
-        [0.34, 0.66],  # 5: Back-Left Tub Rim
-        [0.66, 0.66],  # 6: Back-Right Tub Rim
-        [0.86, 0.72],  # 7: Right-Front Bottom
+        [0.025, 0.070],  # 0: Left-Front Top (Outer ceiling bulkhead)
+        [0.215, 0.195],  # 1: Back-Left Top (Back wall inner top)
+        [0.775, 0.195],  # 2: Back-Right Top (Back wall inner top)
+        [0.945, 0.070],  # 3: Right-Front Top (Outer ceiling bulkhead)
+        [0.180, 0.910],  # 4: Left-Front Bottom (Front curb / tub skirt)
+        [0.330, 0.700],  # 5: Back-Left Pan Seam (Back wall ledge)
+        [0.675, 0.700],  # 6: Back-Right Pan Seam (Back wall ledge)
+        [0.820, 0.910],  # 7: Right-Front Bottom (Front curb / tub skirt)
     ],
     lines=[
-        [0, 1],  # 1. Left wall top
+        [0, 1],  # 1. Left wall top perspective slant
         [1, 2],  # 2. Back wall top
-        [2, 3],  # 3. Right wall top
-        [0, 4],  # 4. Left front vertical
-        [1, 5],  # 5. Back left corner seam
-        [2, 6],  # 6. Back right corner seam
-        [3, 7],  # 7. Right front vertical
-        [4, 5],  # 8. Left bottom ledge
-        [5, 6],  # 9. Back tub rim
-        [6, 7],  # 10. Right bottom ledge
+        [2, 3],  # 3. Right wall top perspective slant
+        [0, 4],  # 4. Left front vertical / outer drywall
+        [1, 5],  # 5. Back left corner crease
+        [2, 6],  # 6. Back right corner crease
+        [3, 7],  # 7. Right front vertical / outer drywall
+        [4, 5],  # 8. Left bottom tub/pan perspective seam
+        [5, 6],  # 9. Back tub/pan rim ledge
+        [6, 7],  # 10. Right bottom tub/pan perspective seam
     ],
     planes=[
         PolygonPlane(
@@ -67,7 +67,12 @@ ALCOVE_BATH_PRESET = PresetDefinition(
 @register_solver("alcove_bath")
 class AlcoveBathSolver(BasePresetSolver):
     """
-    Specialized solver for 3-wall recessed alcove bathtub surrounds (8 control points).
+    Specialized solver for 3-wall recessed alcove bathtub / shower surrounds (8 control points).
+    Applies physical architectural invariants:
+    - Multi-source 2D candidate dot generation (line intersections, Shi-Tomasi/Harris corners).
+    - Middle deadband suppression (35% - 56% of height) to ignore grab bars, faucets, and valves.
+    - Continuous KDE 4-column vertical ordering (outer_left < inner_left < inner_right < outer_right).
+    - Dual-elevation top ceiling vs header and bottom pan seam vs front floor apron.
     """
 
     @property
@@ -80,83 +85,114 @@ class AlcoveBathSolver(BasePresetSolver):
         lines: list[LineSegment],
     ) -> tuple[list[list[float]], float, dict[str, Any]]:
         h, w = img_bgr.shape[:2]
-        confidence_factors: list[float] = []
         landmarks: dict[str, Any] = {}
 
-        # 1. Detect Dual Back-Wall Corner Creases (X_back_left, X_back_right)
-        creases = estimate_vertical_creases(lines, w, min_length_ratio=0.15)
-        # We need two vertical creases in central 60% of image with separation >= 0.20 * w
-        left_candidates = [c for c in creases if 0.20 * w <= c <= 0.48 * w]
-        right_candidates = [c for c in creases if 0.52 * w <= c <= 0.80 * w]
+        # 1. Vanishing Point Estimation
+        vp_x, vp_y = estimate_vanishing_point(lines, w, h)
+        landmarks["vp_x"] = round(vp_x, 1)
+        landmarks["vp_y"] = round(vp_y, 1)
 
-        if left_candidates:
-            x_back_left = left_candidates[0]
-            confidence_factors.append(0.85)
-        else:
-            x_back_left = 0.34 * w
-            confidence_factors.append(0.45)
+        # 2. Continuous 1D KDE Vertical Crease Detection
+        creases = estimate_vertical_creases(
+            lines,
+            w,
+            min_length_ratio=0.03,
+            min_peak_distance=max(30.0, 0.035 * w),
+        )
 
-        if right_candidates:
-            x_back_right = right_candidates[0]
-            confidence_factors.append(0.85)
-        else:
-            x_back_right = 0.66 * w
-            confidence_factors.append(0.45)
+        c_left_inner = [c for c in creases if 0.15 * w <= c <= 0.42 * w]
+        x_in_l = c_left_inner[0] if c_left_inner else 0.26 * w
 
-        # Enforce minimum back wall span
-        if x_back_right - x_back_left < 0.20 * w:
-            x_back_left = 0.34 * w
-            x_back_right = 0.66 * w
+        c_right_inner = [c for c in creases if 0.58 * w <= c <= 0.85 * w]
+        x_in_r = c_right_inner[0] if c_right_inner else 0.74 * w
 
-        landmarks["back_crease_left_x"] = round(x_back_left, 1)
-        landmarks["back_crease_right_x"] = round(x_back_right, 1)
+        # 3. 2D Candidate Dot Generation and Rule Filtering
+        elevation_bands = {
+            "Band_A_Ceiling": (0.00 * h, 0.16 * h),
+            "Band_B_BackTop": (0.12 * h, 0.35 * h),
+            "Band_C_BackTub": (0.58 * h, 0.76 * h),
+            "Band_D_FrontBase": (0.78 * h, 0.98 * h),
+        }
+        candidates = self.extract_all_candidate_dots(img_bgr, lines, (vp_x, vp_y))
+        candidates, classified_bands = self.evaluate_rules_and_filter_candidates(
+            candidates, img_bgr.shape, (vp_x, vp_y), elevation_bands
+        )
 
-        # 2. Detect Back Tub Rim (Y_tub)
-        h_profile, y_start, _ = self.compute_horizontal_energy_profile(img_bgr, 0.50, 0.85)
-        tub_peak_idx = int(np.argmax(h_profile))
-        if float(h_profile[tub_peak_idx]) / (float(np.mean(h_profile)) + 1e-5) > 1.4:
-            refined_tub_idx = subpixel_peak_1d(h_profile, tub_peak_idx)
-            y_tub_back = y_start + refined_tub_idx
-            confidence_factors.append(0.85)
-        else:
-            y_tub_back = 0.66 * h
-            confidence_factors.append(0.45)
+        band_a = classified_bands["Band_A_Ceiling"]
+        band_b = classified_bands["Band_B_BackTop"]
+        band_c = classified_bands["Band_C_BackTub"]
+        band_d = classified_bands["Band_D_FrontBase"]
 
-        landmarks["back_tub_rim_y"] = round(y_tub_back, 1)
+        # 4. Graph Selection: Match candidate dots to P0-P7 vertices
+        # P1: Back-Left Top (Band B near x_in_l)
+        cand_p1 = [d for d in band_b if d["x"] < x_in_r - 0.15 * w]
+        cand_p1 = sorted(cand_p1, key=lambda d: abs(d["x"] - x_in_l) + abs(d["y"] - 0.20 * h) * 0.3)
+        p1 = cand_p1[0] if cand_p1 else None
+        x1, y1 = (p1["x"], p1["y"]) if p1 else (x_in_l, 0.20 * h)
 
-        # 3. Detect Top Ceiling / Tile Surround Line (Y_top)
-        top_profile, top_start, _ = self.compute_horizontal_energy_profile(img_bgr, 0.10, 0.35)
-        top_peak_idx = int(np.argmax(top_profile))
-        if float(top_profile[top_peak_idx]) / (float(np.mean(top_profile)) + 1e-5) > 1.4:
-            refined_top_idx = subpixel_peak_1d(top_profile, top_peak_idx)
-            y_top_back = top_start + refined_top_idx
-            confidence_factors.append(0.80)
-        else:
-            y_top_back = 0.22 * h
-            confidence_factors.append(0.50)
+        # P2: Back-Right Top (Band B near x_in_r, aligned with y1)
+        cand_p2 = [d for d in band_b if d["x"] >= x1 + 0.18 * w]
+        cand_p2 = sorted(cand_p2, key=lambda d: abs(d["x"] - x_in_r) + abs(d["y"] - y1) * 0.6)
+        p2 = cand_p2[0] if cand_p2 else None
+        x2, y2 = (p2["x"], p2["y"]) if p2 else (x_in_r, y1)
 
-        landmarks["back_top_y"] = round(y_top_back, 1)
+        # P5: Back-Left Tub Rim (Band C near x1)
+        cand_p5 = [d for d in band_c if d["x"] < x2 - 0.15 * w]
+        cand_p5 = sorted(cand_p5, key=lambda d: abs(d["x"] - x1) + abs(d["y"] - 0.68 * h) * 0.3)
+        p5 = cand_p5[0] if cand_p5 else None
+        x5, y5 = (p5["x"], p5["y"]) if p5 else (x1, 0.68 * h)
 
-        # 4. Compute Front Outer Flanges (X_front_left, X_front_right)
-        back_width = x_back_right - x_back_left
-        flange_offset = max(0.12 * w, back_width * 0.40)
-        x_front_left = max(0.06 * w, x_back_left - flange_offset)
-        x_front_right = min(0.94 * w, x_back_right + flange_offset)
+        # P6: Back-Right Tub Rim (Band C near x2, aligned with y5)
+        cand_p6 = [d for d in band_c if d["x"] >= x5 + 0.18 * w]
+        cand_p6 = sorted(cand_p6, key=lambda d: abs(d["x"] - x2) + abs(d["y"] - y5) * 0.6)
+        p6 = cand_p6[0] if cand_p6 else None
+        x6, y6 = (p6["x"], p6["y"]) if p6 else (x2, y5)
 
-        # Recessed Perspective Slant: front top is higher, front bottom is lower
-        y_span = y_tub_back - y_top_back
-        perspective_slant_y = y_span * 0.12
+        # P0: Left-Front Ceiling (Outermost left in Band A)
+        cand_p0 = [d for d in band_a if d["x"] < x1 - 0.05 * w]
+        cand_p0 = sorted(cand_p0, key=lambda d: d["x"])
+        p0 = cand_p0[0] if cand_p0 else None
+        x0, y0 = (p0["x"], p0["y"]) if p0 else (max(0.02 * w, x1 - 0.20 * w), 0.08 * h)
+
+        # P3: Right-Front Ceiling (Outermost right in Band A)
+        cand_p3 = [d for d in band_a if d["x"] > x2 + 0.05 * w]
+        cand_p3 = sorted(cand_p3, key=lambda d: -d["x"])
+        p3 = cand_p3[0] if cand_p3 else None
+        x3, y3 = (p3["x"], p3["y"]) if p3 else (min(0.98 * w, x2 + 0.20 * w), 0.08 * h)
+
+        # P4: Left-Front Base (Deepest floor point on left in Band D)
+        cand_p4 = [d for d in band_d if d["x"] <= x5 and d["y"] >= 0.82 * h]
+        cand_p4 = sorted(cand_p4, key=lambda d: -d["y"])
+        p4 = cand_p4[0] if cand_p4 else None
+        x4, y4 = (p4["x"], p4["y"]) if p4 else (max(0.04 * w, x0 + 0.08 * w), 0.91 * h)
+
+        # P7: Right-Front Base (Deepest floor point on right in Band D)
+        cand_p7 = [d for d in band_d if d["x"] >= x6 and d["y"] >= 0.82 * h]
+        cand_p7 = sorted(cand_p7, key=lambda d: -d["y"])
+        p7 = cand_p7[0] if cand_p7 else None
+        x7, y7 = (p7["x"], p7["y"]) if p7 else (min(0.96 * w, x3 - 0.08 * w), 0.91 * h)
+
+        landmarks["outer_left_x"] = round(x0, 1)
+        landmarks["back_left_crease_x"] = round(x1, 1)
+        landmarks["back_right_crease_x"] = round(x2, 1)
+        landmarks["outer_right_x"] = round(x3, 1)
+        landmarks["y_front_ceiling"] = round(min(y0, y3), 1)
+        landmarks["y_back_top"] = round(min(y1, y2), 1)
+        landmarks["y_back_tub"] = round(max(y5, y6), 1)
+        landmarks["y_front_floor_base"] = round(max(y4, y7), 1)
+        landmarks["candidates"] = candidates
 
         points = [
-            [x_front_left, y_top_back - perspective_slant_y],  # 0: Left-Front Top
-            [x_back_left, y_top_back],  # 1: Back-Left Top
-            [x_back_right, y_top_back],  # 2: Back-Right Top
-            [x_front_right, y_top_back - perspective_slant_y],  # 3: Right-Front Top
-            [x_front_left, y_tub_back + perspective_slant_y],  # 4: Left-Front Bottom
-            [x_back_left, y_tub_back],  # 5: Back-Left Tub Rim
-            [x_back_right, y_tub_back],  # 6: Back-Right Tub Rim
-            [x_front_right, y_tub_back + perspective_slant_y],  # 7: Right-Front Bottom
+            [x0, y0],  # 0: Left-Front Top (Outer ceiling bulkhead)
+            [x1, y1],  # 1: Back-Left Top (Back wall inner top)
+            [x2, y2],  # 2: Back-Right Top (Back wall inner top)
+            [x3, y3],  # 3: Right-Front Top (Outer ceiling bulkhead)
+            [x4, y4],  # 4: Left-Front Bottom (Front curb / tub skirt)
+            [x5, y5],  # 5: Back-Left Pan Seam (Back wall ledge)
+            [x6, y6],  # 6: Back-Right Pan Seam (Back wall ledge)
+            [x7, y7],  # 7: Right-Front Bottom (Front curb / tub skirt)
         ]
 
-        overall_confidence = float(np.mean(confidence_factors)) if confidence_factors else 0.50
-        return points, overall_confidence, landmarks
+        matched_count = sum(1 for p in (p0, p1, p2, p3, p4, p5, p6, p7) if p is not None)
+        confidence = round(0.60 + (matched_count / 8.0) * 0.35, 2)
+        return points, confidence, landmarks
