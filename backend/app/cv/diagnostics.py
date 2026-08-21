@@ -183,30 +183,97 @@ def render_solver_diagnostic_composite(
     )
 
     # =========================================================================
-    # Panel 3: Fitted Preset Mesh & Geometry Distortion Analysis
+    # Panel 3: Fitted Preset Mesh & Surface Partitioning (Walls, Tub/Pan, Floor)
     # =========================================================================
     p3 = base_resized.copy()
     plane_overlay = p3.copy()
 
-    # Color palette for planes
-    plane_colors = [
-        (180, 100, 0),    # Left Wall (Cyan/Blue tint)
-        (0, 180, 100),    # Back Wall (Green/Lime tint)
-        (180, 0, 180),    # Right Wall (Magenta/Pink tint)
-        (0, 140, 255),    # Floor/Tub
+    # 1. Color palette for walls
+    wall_colors = [
+        (180, 100, 0),  # Left Wall (Cyan/Blue tint)
+        (0, 180, 80),  # Back Wall (Green/Lime tint)
+        (180, 0, 180),  # Right Wall (Magenta/Pink tint)
     ]
 
     planes = preset.planes if (preset and preset.planes) else []
     for idx, plane in enumerate(planes):
-        color = plane_colors[idx % len(plane_colors)]
+        color = wall_colors[idx % len(wall_colors)]
         plane_pts = np.array(
-            [[int(selected_points[p_idx][0] * scale), int(selected_points[p_idx][1] * scale)] for p_idx in plane.point_indices if p_idx < len(selected_points)],
+            [
+                [int(selected_points[p_idx][0] * scale), int(selected_points[p_idx][1] * scale)]
+                for p_idx in plane.point_indices
+                if p_idx < len(selected_points)
+            ],
             dtype=np.int32,
         )
         if len(plane_pts) >= 3:
             cv2.fillPoly(plane_overlay, [plane_pts], color)
 
-    p3 = cv2.addWeighted(plane_overlay, 0.40, p3, 0.60, 0)
+    # 2. Draw Bathtub / Shower Pan Basin Polygon [P4, P5, P6, P7]
+    base_type_str = landmarks.get("detected_base_type", "tub_or_pan").replace("_", " ").upper()
+    if len(selected_points) >= 8:
+        base_pts = np.array(
+            [
+                [int(selected_points[4][0] * scale), int(selected_points[4][1] * scale)],
+                [int(selected_points[5][0] * scale), int(selected_points[5][1] * scale)],
+                [int(selected_points[6][0] * scale), int(selected_points[6][1] * scale)],
+                [int(selected_points[7][0] * scale), int(selected_points[7][1] * scale)],
+            ],
+            dtype=np.int32,
+        )
+        # Shaded in warm gold/amber tint
+        cv2.fillPoly(plane_overlay, [base_pts], (0, 160, 240))
+
+        # 3. Draw Detected Flooring Zone (Below P4-P7 down to image bottom)
+        p4_x, p4_y = int(selected_points[4][0] * scale), int(selected_points[4][1] * scale)
+        p7_x, p7_y = int(selected_points[7][0] * scale), int(selected_points[7][1] * scale)
+
+        floor_pts = np.array(
+            [
+                [0, p4_y],
+                [p4_x, p4_y],
+                [p7_x, p7_y],
+                [dw, p7_y],
+                [dw, dh],
+                [0, dh],
+            ],
+            dtype=np.int32,
+        )
+        # Shaded in rich wood/tile floor tint
+        cv2.fillPoly(plane_overlay, [floor_pts], (40, 80, 140))
+
+    p3 = cv2.addWeighted(plane_overlay, 0.42, p3, 0.58, 0)
+
+    # Draw tub basin and floor perimeter lines
+    if len(selected_points) >= 8:
+        cv2.polylines(p3, [base_pts], isClosed=True, color=(0, 230, 255), thickness=2, lineType=cv2.LINE_AA)
+        cv2.line(p3, (0, p4_y), (p4_x, p4_y), (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.line(p3, (p7_x, p7_y), (dw, p7_y), (0, 200, 255), 1, cv2.LINE_AA)
+
+        # Label Tub / Shower Base
+        mid_base_x = int((p4_x + p7_x) / 2)
+        mid_base_y = int((int(selected_points[5][1] * scale) + p4_y) / 2)
+        cv2.putText(
+            p3,
+            f"[{base_type_str}]",
+            (mid_base_x - 45, mid_base_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (255, 255, 255),
+            1,
+        )
+
+        # Label Flooring Zone
+        if dh - p4_y >= 30:
+            cv2.putText(
+                p3,
+                "[FLOORING]",
+                (int(dw / 2) - 35, int((p4_y + dh) / 2)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.40,
+                (220, 220, 220),
+                1,
+            )
 
     # Draw mesh connecting lines
     lines_def = preset.lines if (preset and preset.lines) else []
@@ -233,14 +300,27 @@ def render_solver_diagnostic_composite(
     elif "aspect_ratio" in rule_eval.get("rule_results", {}):
         back_aspect = rule_eval["rule_results"]["aspect_ratio"].get("details", {}).get("aspect_ratio", 0.0)
 
+    # Top Header Bar
     cv2.rectangle(p3, (0, 0), (dw, 32), (30, 30, 30), -1)
     cv2.putText(
         p3,
-        f"3. Mesh (Aspect: {back_aspect:.2f} | Score: {score:.2f})",
+        f"3. Mesh & Surfaces ({base_type_str} | Aspect: {back_aspect:.2f} | Score: {score:.2f})",
         (10, 22),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.52,
         (255, 255, 255),
+        1,
+    )
+
+    # Bottom Legend Bar
+    cv2.rectangle(p3, (0, dh - 26), (dw, dh), (20, 20, 20), -1)
+    cv2.putText(
+        p3,
+        "Surfaces: [Cyan: Left] [Green: Back] [Magenta: Right] [Gold: Base] [Brown: Floor]",
+        (8, dh - 8),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.35,
+        (220, 220, 220),
         1,
     )
 
