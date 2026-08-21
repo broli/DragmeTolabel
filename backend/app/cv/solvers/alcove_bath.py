@@ -125,14 +125,10 @@ class AlcoveBathSolver(BasePresetSolver):
         h_wet = max(0.40 * h, y_floor - y_header)
         landmarks["wet_area_real_estate_ratio"] = round(h_wet / h, 3)
 
-        # Relative Hardware Deadband (Middle 32% - 56% of wet area wall)
-        deadband_y_range = (y_header + 0.32 * h_wet, y_header + 0.56 * h_wet)
-        landmarks["deadband_y_range"] = [round(deadband_y_range[0], 1), round(deadband_y_range[1], 1)]
-
         # 4. Base Type & Elevation Auto-Detection (Bathtub vs Shower Pan)
         tub_lines = [
             seg for seg in horiz_all
-            if y_header + 0.55 * h_wet <= (seg.y1 + seg.y2) / 2.0 <= y_header + 0.88 * h_wet
+            if y_header + 0.50 * h_wet <= (seg.y1 + seg.y2) / 2.0 <= y_header + 0.88 * h_wet
         ]
         pan_lines = [
             seg for seg in horiz_all
@@ -145,7 +141,7 @@ class AlcoveBathSolver(BasePresetSolver):
         base_type = "bathtub" if (tub_score >= pan_score and tub_lines) else "shower_pan"
         landmarks["detected_base_type"] = base_type
 
-        # Dominant back base seam Y
+        # Dominant back base seam Y (Tub rim or Pan curb)
         if base_type == "bathtub" and tub_lines:
             tub_lines_sorted = sorted(tub_lines, key=lambda seg: seg.length, reverse=True)
             y_base_target = float((tub_lines_sorted[0].y1 + tub_lines_sorted[0].y2) / 2.0)
@@ -155,7 +151,15 @@ class AlcoveBathSolver(BasePresetSolver):
         else:
             y_base_target = y_header + 0.72 * h_wet if base_type == "bathtub" else y_floor - 0.05 * h_wet
 
-        # 5. 2D Candidate Dot Generation and Dynamic Rule Filtering
+        # 5. Hardware Deadband (Strictly on Back Wall: Between Header and Tub Rim)
+        h_back_wall = max(0.25 * h, y_base_target - y_header)
+        deadband_y_range = (
+            y_header + 0.32 * h_back_wall,
+            y_header + 0.68 * h_back_wall,
+        )
+        landmarks["deadband_y_range"] = [round(deadband_y_range[0], 1), round(deadband_y_range[1], 1)]
+
+        # 6. 2D Candidate Dot Generation and Dynamic Rule Filtering
         elevation_bands = {
             "Band_A_Ceiling": (0.00 * h, y_header),
             "Band_B_BackTop": (max(0.0, y_header - 0.08 * h_wet), y_header + 0.20 * h_wet),
@@ -175,7 +179,7 @@ class AlcoveBathSolver(BasePresetSolver):
         band_c = classified_bands["Band_C_BackBase"]
         band_d = classified_bands["Band_D_FrontBase"]
 
-        # 6. Graph Selection: Match candidate dots to P0-P7 vertices
+        # 7. Graph Selection: Match candidate dots to P0-P7 vertices
         # P1: Back-Left Top (Band B near x_in_l)
         cand_p1 = [d for d in band_b if d["x"] < x_in_r - 0.15 * w]
         cand_p1 = sorted(cand_p1, key=lambda d: abs(d["x"] - x_in_l) + abs(d["y"] - 0.20 * h) * 0.3)
