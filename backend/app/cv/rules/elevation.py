@@ -55,7 +55,7 @@ class ElevationMonotonicityRule(GeometricRule):
         if y6 >= y7:
             violations.append(f"Right tub rim (Y6={y6:.1f}) is below or equal to floor base (Y7={y7:.1f})")
 
-        # Minimum Tub to Floor Apron Drop
+        # Minimum Tub to Floor Apron Drop (Soft penalty for low curb pans, hard prune on true inversion)
         min_drop = config.tub_to_floor_min_offset_ratio * h
         left_drop = y4 - y5
         right_drop = y7 - y6
@@ -64,9 +64,10 @@ class ElevationMonotonicityRule(GeometricRule):
         if right_drop < min_drop:
             violations.append(f"Right floor apron drop ({right_drop:.1f}px) is less than min ({min_drop:.1f}px)")
 
+        has_inversion = (y0 >= y1) or (y1 >= y5) or (y5 > y4) or (y3 >= y2) or (y2 >= y6) or (y6 > y7)
         passed = len(violations) == 0
-        hard_pruned = not passed
-        score = 1.0 if passed else max(0.0, 1.0 - (len(violations) * 0.25))
+        hard_pruned = has_inversion
+        score = 1.0 if passed else max(0.5, 1.0 - (len(violations) * 0.15))
 
         reason = "Passed: Vertical elevations satisfy physical monotonicity" if passed else "; ".join(violations)
 
