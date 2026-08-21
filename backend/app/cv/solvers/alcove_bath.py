@@ -110,10 +110,34 @@ class AlcoveBathSolver(BasePresetSolver):
         c_right_inner = [c for c in creases if 0.58 * w <= c <= 0.85 * w]
         x_in_r = c_right_inner[0] if c_right_inner else 0.74 * w
 
-        # 3. Base Type & Elevation Auto-Detection (Bathtub vs Shower Pan)
-        horiz_lower = [seg for seg in lines if seg.category == "horizontal" and (seg.y1 + seg.y2) / 2.0 >= 0.50 * h]
-        tub_lines = [seg for seg in horiz_lower if self.config.band_tub_rim_y_min_ratio * h <= (seg.y1 + seg.y2) / 2.0 <= self.config.band_tub_rim_y_max_ratio * h]
-        pan_lines = [seg for seg in horiz_lower if self.config.band_shower_pan_y_min_ratio * h <= (seg.y1 + seg.y2) / 2.0 <= self.config.band_shower_pan_y_max_ratio * h]
+        # 3. Dynamic Wet Area Real Estate & Framing Detection (Header vs Floor Boundary)
+        horiz_all = [seg for seg in lines if seg.category == "horizontal"]
+        header_lines = [seg for seg in horiz_all if (seg.y1 + seg.y2) / 2.0 <= 0.35 * h]
+        y_header = float((header_lines[0].y1 + header_lines[0].y2) / 2.0) if header_lines else 0.20 * h
+
+        floor_lines = [seg for seg in horiz_all if (seg.y1 + seg.y2) / 2.0 >= 0.65 * h]
+        if floor_lines:
+            floor_lines_by_depth = sorted(floor_lines, key=lambda seg: (seg.y1 + seg.y2) / 2.0, reverse=True)
+            y_floor = float((floor_lines_by_depth[0].y1 + floor_lines_by_depth[0].y2) / 2.0)
+        else:
+            y_floor = 0.91 * h
+
+        h_wet = max(0.40 * h, y_floor - y_header)
+        landmarks["wet_area_real_estate_ratio"] = round(h_wet / h, 3)
+
+        # Relative Hardware Deadband (Middle 32% - 56% of wet area wall)
+        deadband_y_range = (y_header + 0.32 * h_wet, y_header + 0.56 * h_wet)
+        landmarks["deadband_y_range"] = [round(deadband_y_range[0], 1), round(deadband_y_range[1], 1)]
+
+        # 4. Base Type & Elevation Auto-Detection (Bathtub vs Shower Pan)
+        tub_lines = [
+            seg for seg in horiz_all
+            if y_header + 0.55 * h_wet <= (seg.y1 + seg.y2) / 2.0 <= y_header + 0.88 * h_wet
+        ]
+        pan_lines = [
+            seg for seg in horiz_all
+            if y_header + 0.88 * h_wet < (seg.y1 + seg.y2) / 2.0 <= y_floor + 0.05 * h_wet
+        ]
 
         tub_score = sum(seg.length for seg in tub_lines)
         pan_score = sum(seg.length for seg in pan_lines)
@@ -129,18 +153,18 @@ class AlcoveBathSolver(BasePresetSolver):
             pan_lines_sorted = sorted(pan_lines, key=lambda seg: seg.length, reverse=True)
             y_base_target = float((pan_lines_sorted[0].y1 + pan_lines_sorted[0].y2) / 2.0)
         else:
-            y_base_target = 0.68 * h if base_type == "bathtub" else 0.85 * h
+            y_base_target = y_header + 0.72 * h_wet if base_type == "bathtub" else y_floor - 0.05 * h_wet
 
-        # 4. 2D Candidate Dot Generation and Rule Filtering
+        # 5. 2D Candidate Dot Generation and Dynamic Rule Filtering
         elevation_bands = {
-            "Band_A_Ceiling": (self.config.band_ceiling_y_min_ratio * h, self.config.band_ceiling_y_max_ratio * h),
-            "Band_B_BackTop": (self.config.band_header_y_min_ratio * h, self.config.band_header_y_max_ratio * h),
-            "Band_C_BackBase": (max(0.45 * h, y_base_target - 0.12 * h), min(0.95 * h, y_base_target + 0.12 * h)),
-            "Band_D_FrontBase": (self.config.band_floor_y_min_ratio * h, self.config.band_floor_y_max_ratio * h),
+            "Band_A_Ceiling": (0.00 * h, y_header),
+            "Band_B_BackTop": (max(0.0, y_header - 0.08 * h_wet), y_header + 0.20 * h_wet),
+            "Band_C_BackBase": (max(0.40 * h, y_base_target - 0.12 * h_wet), min(h, y_base_target + 0.12 * h_wet)),
+            "Band_D_FrontBase": (max(0.60 * h, y_floor - 0.15 * h_wet), min(h, y_floor + 0.15 * h_wet)),
         }
         candidates = self.extract_all_candidate_dots(img_bgr, lines, (vp_x, vp_y))
         candidates, classified_bands = self.evaluate_rules_and_filter_candidates(
-            candidates, img_bgr.shape, (vp_x, vp_y), elevation_bands
+            candidates, img_bgr.shape, (vp_x, vp_y), elevation_bands, deadband_y_range=deadband_y_range
         )
 
         band_a = classified_bands["Band_A_Ceiling"]
@@ -148,7 +172,7 @@ class AlcoveBathSolver(BasePresetSolver):
         band_c = classified_bands["Band_C_BackBase"]
         band_d = classified_bands["Band_D_FrontBase"]
 
-        # 5. Graph Selection: Match candidate dots to P0-P7 vertices
+        # 6. Graph Selection: Match candidate dots to P0-P7 vertices
         # P1: Back-Left Top (Band B near x_in_l)
         cand_p1 = [d for d in band_b if d["x"] < x_in_r - 0.15 * w]
         cand_p1 = sorted(cand_p1, key=lambda d: abs(d["x"] - x_in_l) + abs(d["y"] - 0.20 * h) * 0.3)

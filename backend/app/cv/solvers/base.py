@@ -295,16 +295,22 @@ class BasePresetSolver(ABC):
         img_shape: tuple[int, ...],
         vp: tuple[float, float],
         elevation_bands: dict[str, tuple[float, float]],
+        deadband_y_range: tuple[float, float] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
         """
         Apply architectural and geometric discard rules:
         - Rule 1: Outside frame boundary
-        - Rule 2: Hardware Deadband (35% to 56% height)
+        - Rule 2: Hardware Deadband (relative to wet area ROI or 35% to 56% height)
         - Rule 3: Central Floor Drain / Clutter
         - Rule 4: Elevation Gap (not in any valid structural plane band)
         """
         h, w = img_shape[:2]
         classified_bands: dict[str, list[dict[str, Any]]] = {k: [] for k in elevation_bands.keys()}
+
+        db_min_y, db_max_y = deadband_y_range if deadband_y_range is not None else (
+            self.config.deadband_y_min_ratio * h,
+            self.config.deadband_y_max_ratio * h,
+        )
 
         for dot in candidates:
             x, y = dot["x"], dot["y"]
@@ -315,10 +321,10 @@ class BasePresetSolver(ABC):
                 dot["discard_reason"] = "Rule 1: Outside photo boundaries"
                 continue
 
-            # Rule 2: Middle Hardware Deadband (faucets, grab bars, valves)
-            if 0.35 * h <= y <= 0.56 * h:
+            # Rule 2: Hardware Deadband (faucets, grab bars, valves)
+            if db_min_y <= y <= db_max_y:
                 dot["status"] = "DISCARDED"
-                dot["discard_reason"] = f"Rule 2: Hardware Deadband (Y={y:.0f}px is inside 35%-56% height zone)"
+                dot["discard_reason"] = f"Rule 2: Hardware Deadband (Y={y:.0f}px is inside [{db_min_y:.0f}, {db_max_y:.0f}]px hardware zone)"
                 continue
 
             # Rule 3: Central Floor Drain / Clutter
