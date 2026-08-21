@@ -100,7 +100,7 @@ class BasePresetSolver(ABC):
             confidence = round(0.4 * confidence + 0.6 * eval_report.composite_score, 3)
 
             # 6. Extract candidate dots if returned in landmarks
-            candidates = landmarks.pop("candidates", None)
+            candidates = landmarks.get("candidates", [])
 
             # 7. Generate Visual Debug Heatmap Overlay
             heatmap_b64 = self.generate_debug_heatmap(img_bgr, landmarks, clamped_points, lines, candidates)
@@ -114,6 +114,7 @@ class BasePresetSolver(ABC):
                 "confidence_score": round(confidence, 3),
                 "normalized_points": [[round(p[0] / w, 4), round(p[1] / h, 4)] for p in clamped_points],
                 "rule_evaluation": eval_report.to_dict(),
+                "candidates": candidates,
             }
             if candidates:
                 debug_info["candidate_dots_count"] = len(candidates)

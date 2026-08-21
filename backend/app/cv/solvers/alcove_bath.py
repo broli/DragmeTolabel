@@ -162,6 +162,9 @@ class AlcoveBathSolver(BasePresetSolver):
             "Band_C_BackBase": (max(0.40 * h, y_base_target - 0.12 * h_wet), min(h, y_base_target + 0.12 * h_wet)),
             "Band_D_FrontBase": (max(0.60 * h, y_floor - 0.15 * h_wet), min(h, y_floor + 0.15 * h_wet)),
         }
+        landmarks["elevation_bands"] = {
+            k: [round(v[0], 1), round(v[1], 1)] for k, v in elevation_bands.items()
+        }
         candidates = self.extract_all_candidate_dots(img_bgr, lines, (vp_x, vp_y))
         candidates, classified_bands = self.evaluate_rules_and_filter_candidates(
             candidates, img_bgr.shape, (vp_x, vp_y), elevation_bands, deadband_y_range=deadband_y_range

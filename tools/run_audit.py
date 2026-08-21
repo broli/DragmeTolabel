@@ -100,14 +100,19 @@ def create_multi_panel_diagnostic(
     p2 = base_resized.copy()
     p2 = cv2.addWeighted(p2, 0.60, np.zeros_like(p2), 0.40, 0)
 
-    # Deadband overlay
-    d_top, d_bot = int(0.35 * dh), int(0.56 * dh)
+    # Deadband overlay (Relative to wet area wall or fallback)
+    db_range = landmarks.get("deadband_y_range") if landmarks else None
+    if db_range:
+        d_top, d_bot = int(db_range[0] * scale), int(db_range[1] * scale)
+    else:
+        d_top, d_bot = int(0.35 * dh), int(0.56 * dh)
+
     overlay = p2.copy()
     cv2.rectangle(overlay, (0, d_top), (dw, d_bot), (0, 0, 100), -1)
     p2 = cv2.addWeighted(overlay, 0.30, p2, 0.70, 0)
     cv2.putText(
         p2,
-        "HARDWARE DEADBAND (Faucets/Valves Discarded)",
+        f"HARDWARE DEADBAND ({int(d_top/scale)}px - {int(d_bot/scale)}px)",
         (10, int((d_top + d_bot) / 2)),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.42,
@@ -115,9 +120,17 @@ def create_multi_panel_diagnostic(
         1,
     )
 
-    for b_y, label in [(0.16 * dh, "Ceiling"), (0.35 * dh, "Header"), (0.76 * dh, "Tub Rim"), (0.98 * dh, "Floor")]:
-        cv2.line(p2, (0, int(b_y)), (dw, int(b_y)), (100, 120, 100), 1, cv2.LINE_AA)
-        cv2.putText(p2, label, (dw - 65, int(b_y) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 150, 120), 1)
+    bands = landmarks.get("elevation_bands") if landmarks else None
+    if bands:
+        for b_name, (y_min, y_max) in bands.items():
+            y_s = int(y_max * scale)
+            label = b_name.replace("Band_", "").replace("_", " ")
+            cv2.line(p2, (0, y_s), (dw, y_s), (100, 120, 100), 1, cv2.LINE_AA)
+            cv2.putText(p2, label, (dw - 100, y_s - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 150, 120), 1)
+    else:
+        for b_y, label in [(0.16 * dh, "Ceiling"), (0.35 * dh, "Header"), (0.76 * dh, "Tub Rim"), (0.98 * dh, "Floor")]:
+            cv2.line(p2, (0, int(b_y)), (dw, int(b_y)), (100, 120, 100), 1, cv2.LINE_AA)
+            cv2.putText(p2, label, (dw - 65, int(b_y) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 150, 120), 1)
 
     for crease in creases:
         cx_s = int(crease * scale)
@@ -268,17 +281,10 @@ def run_audit(
         landmarks = res.landmarks
         rule_eval = res.debug_info.get("rule_evaluation", {})
 
-        # Extract and evaluate candidates for diagnostic panels
-        elevation_bands = {
-            "Band_A_Ceiling": (config.band_ceiling_y_min_ratio * h, config.band_ceiling_y_max_ratio * h),
-            "Band_B_BackTop": (config.band_header_y_min_ratio * h, config.band_header_y_max_ratio * h),
-            "Band_C_BackTub": (config.band_tub_rim_y_min_ratio * h, config.band_tub_rim_y_max_ratio * h),
-            "Band_D_FrontBase": (config.band_floor_y_min_ratio * h, config.band_floor_y_max_ratio * h),
-        }
-        raw_candidates = solver.extract_all_candidate_dots(img, lines, vp)
-        evaluated_candidates, _ = solver.evaluate_rules_and_filter_candidates(
-            raw_candidates, img.shape, vp, elevation_bands
-        )
+        # Extract evaluated candidates directly from solver's dynamic execution
+        evaluated_candidates = res.debug_info.get("candidates", [])
+        if not evaluated_candidates:
+            evaluated_candidates = solver.extract_all_candidate_dots(img, lines, vp)
 
         out_img_name = f"audit_{photo_path.stem}.jpg"
         out_img_path = str(run_dir / out_img_name)
