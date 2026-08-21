@@ -6,6 +6,7 @@ using 4-column vertical clustering, middle deadband hardware suppression, and du
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -23,42 +24,45 @@ ALCOVE_BATH_PRESET = PresetDefinition(
     line_count=10,
     enabled=True,
     default_normalized_points=[
-        [0.025, 0.070],  # 0: Left-Front Top (Outer ceiling bulkhead)
-        [0.215, 0.195],  # 1: Back-Left Top (Back wall inner top)
-        [0.775, 0.195],  # 2: Back-Right Top (Back wall inner top)
-        [0.945, 0.070],  # 3: Right-Front Top (Outer ceiling bulkhead)
-        [0.180, 0.910],  # 4: Left-Front Bottom (Front curb / tub skirt)
-        [0.330, 0.700],  # 5: Back-Left Pan Seam (Back wall ledge)
-        [0.675, 0.700],  # 6: Back-Right Pan Seam (Back wall ledge)
-        [0.820, 0.910],  # 7: Right-Front Bottom (Front curb / tub skirt)
+        [0.08, 0.08],  # P0: Left-Front Top (Outer ceiling bulkhead)
+        [0.26, 0.20],  # P1: Back-Left Top (Back wall inner top)
+        [0.74, 0.20],  # P2: Back-Right Top (Back wall inner top)
+        [0.92, 0.08],  # P3: Right-Front Top (Outer ceiling bulkhead)
+        [0.18, 0.92],  # P4: Left-Front Bottom (Front curb / tub skirt)
+        [0.32, 0.68],  # P5: Back-Left Pan Seam (Back wall ledge)
+        [0.68, 0.68],  # P6: Back-Right Pan Seam (Back wall ledge)
+        [0.82, 0.92],  # P7: Right-Front Bottom (Front curb / tub skirt)
     ],
     lines=[
-        [0, 1],  # 1. Left wall top perspective slant
-        [1, 2],  # 2. Back wall top
-        [2, 3],  # 3. Right wall top perspective slant
-        [0, 4],  # 4. Left front vertical / outer drywall
-        [1, 5],  # 5. Back left corner crease
-        [2, 6],  # 6. Back right corner crease
-        [3, 7],  # 7. Right front vertical / outer drywall
-        [4, 5],  # 8. Left bottom tub/pan perspective seam
-        [5, 6],  # 9. Back tub/pan rim ledge
-        [6, 7],  # 10. Right bottom tub/pan perspective seam
+        [0, 1],  # 0: Left ceiling slant
+        [1, 2],  # 1: Back wall top header
+        [2, 3],  # 2: Right ceiling slant
+        [0, 4],  # 3: Left outer wall / frame boundary
+        [1, 5],  # 4: Back-left corner crease
+        [2, 6],  # 5: Back-right corner crease
+        [3, 7],  # 6: Right outer wall / frame boundary
+        [4, 5],  # 7: Left tub rim / pan ledge seam
+        [5, 6],  # 8: Back wall tub rim / pan ledge seam
+        [6, 7],  # 9: Right tub rim / pan ledge seam
     ],
     planes=[
         PolygonPlane(
             id="left_wall",
-            name="Left Alcove Wall",
+            name="Left Wall",
             point_indices=[0, 1, 5, 4],
+            default_material="carrara_marble",
         ),
         PolygonPlane(
             id="back_wall",
-            name="Back Alcove Wall",
+            name="Back Wall",
             point_indices=[1, 2, 6, 5],
+            default_material="carrara_marble",
         ),
         PolygonPlane(
             id="right_wall",
-            name="Right Alcove Wall",
+            name="Right Wall",
             point_indices=[2, 3, 7, 6],
+            default_material="carrara_marble",
         ),
     ],
 )
@@ -106,12 +110,33 @@ class AlcoveBathSolver(BasePresetSolver):
         c_right_inner = [c for c in creases if 0.58 * w <= c <= 0.85 * w]
         x_in_r = c_right_inner[0] if c_right_inner else 0.74 * w
 
-        # 3. 2D Candidate Dot Generation and Rule Filtering
+        # 3. Base Type & Elevation Auto-Detection (Bathtub vs Shower Pan)
+        horiz_lower = [seg for seg in lines if seg.category == "horizontal" and (seg.y1 + seg.y2) / 2.0 >= 0.50 * h]
+        tub_lines = [seg for seg in horiz_lower if self.config.band_tub_rim_y_min_ratio * h <= (seg.y1 + seg.y2) / 2.0 <= self.config.band_tub_rim_y_max_ratio * h]
+        pan_lines = [seg for seg in horiz_lower if self.config.band_shower_pan_y_min_ratio * h <= (seg.y1 + seg.y2) / 2.0 <= self.config.band_shower_pan_y_max_ratio * h]
+
+        tub_score = sum(seg.length for seg in tub_lines)
+        pan_score = sum(seg.length for seg in pan_lines)
+
+        base_type = "bathtub" if (tub_score >= pan_score and tub_lines) else "shower_pan"
+        landmarks["detected_base_type"] = base_type
+
+        # Dominant back base seam Y
+        if base_type == "bathtub" and tub_lines:
+            tub_lines_sorted = sorted(tub_lines, key=lambda seg: seg.length, reverse=True)
+            y_base_target = float((tub_lines_sorted[0].y1 + tub_lines_sorted[0].y2) / 2.0)
+        elif base_type == "shower_pan" and pan_lines:
+            pan_lines_sorted = sorted(pan_lines, key=lambda seg: seg.length, reverse=True)
+            y_base_target = float((pan_lines_sorted[0].y1 + pan_lines_sorted[0].y2) / 2.0)
+        else:
+            y_base_target = 0.68 * h if base_type == "bathtub" else 0.85 * h
+
+        # 4. 2D Candidate Dot Generation and Rule Filtering
         elevation_bands = {
-            "Band_A_Ceiling": (0.00 * h, 0.16 * h),
-            "Band_B_BackTop": (0.12 * h, 0.35 * h),
-            "Band_C_BackTub": (0.58 * h, 0.76 * h),
-            "Band_D_FrontBase": (0.78 * h, 0.98 * h),
+            "Band_A_Ceiling": (self.config.band_ceiling_y_min_ratio * h, self.config.band_ceiling_y_max_ratio * h),
+            "Band_B_BackTop": (self.config.band_header_y_min_ratio * h, self.config.band_header_y_max_ratio * h),
+            "Band_C_BackBase": (max(0.45 * h, y_base_target - 0.12 * h), min(0.95 * h, y_base_target + 0.12 * h)),
+            "Band_D_FrontBase": (self.config.band_floor_y_min_ratio * h, self.config.band_floor_y_max_ratio * h),
         }
         candidates = self.extract_all_candidate_dots(img_bgr, lines, (vp_x, vp_y))
         candidates, classified_bands = self.evaluate_rules_and_filter_candidates(
@@ -120,10 +145,10 @@ class AlcoveBathSolver(BasePresetSolver):
 
         band_a = classified_bands["Band_A_Ceiling"]
         band_b = classified_bands["Band_B_BackTop"]
-        band_c = classified_bands["Band_C_BackTub"]
+        band_c = classified_bands["Band_C_BackBase"]
         band_d = classified_bands["Band_D_FrontBase"]
 
-        # 4. Graph Selection: Match candidate dots to P0-P7 vertices
+        # 5. Graph Selection: Match candidate dots to P0-P7 vertices
         # P1: Back-Left Top (Band B near x_in_l)
         cand_p1 = [d for d in band_b if d["x"] < x_in_r - 0.15 * w]
         cand_p1 = sorted(cand_p1, key=lambda d: abs(d["x"] - x_in_l) + abs(d["y"] - 0.20 * h) * 0.3)
@@ -135,18 +160,6 @@ class AlcoveBathSolver(BasePresetSolver):
         cand_p2 = sorted(cand_p2, key=lambda d: abs(d["x"] - x_in_r) + abs(d["y"] - y1) * 0.6)
         p2 = cand_p2[0] if cand_p2 else None
         x2, y2 = (p2["x"], p2["y"]) if p2 else (x_in_r, y1)
-
-        # P5: Back-Left Tub Rim (Band C near x1)
-        cand_p5 = [d for d in band_c if d["x"] < x2 - 0.15 * w]
-        cand_p5 = sorted(cand_p5, key=lambda d: abs(d["x"] - x1) + abs(d["y"] - 0.68 * h) * 0.3)
-        p5 = cand_p5[0] if cand_p5 else None
-        x5, y5 = (p5["x"], p5["y"]) if p5 else (x1, 0.68 * h)
-
-        # P6: Back-Right Tub Rim (Band C near x2, aligned with y5)
-        cand_p6 = [d for d in band_c if d["x"] >= x5 + 0.18 * w]
-        cand_p6 = sorted(cand_p6, key=lambda d: abs(d["x"] - x2) + abs(d["y"] - y5) * 0.6)
-        p6 = cand_p6[0] if cand_p6 else None
-        x6, y6 = (p6["x"], p6["y"]) if p6 else (x2, y5)
 
         # P0: Left-Front Ceiling (Outermost left in Band A)
         cand_p0 = [d for d in band_a if d["x"] < x1 - 0.05 * w]
@@ -160,17 +173,65 @@ class AlcoveBathSolver(BasePresetSolver):
         p3 = cand_p3[0] if cand_p3 else None
         x3, y3 = (p3["x"], p3["y"]) if p3 else (min(0.98 * w, x2 + 0.20 * w), 0.08 * h)
 
-        # P4: Left-Front Base (Deepest floor point on left in Band D)
-        cand_p4 = [d for d in band_d if d["x"] <= x5 and d["y"] >= 0.82 * h]
+        # P4: Left-Front Floor Base (Deepest floor point on left in Band D)
+        cand_p4 = [d for d in band_d if d["x"] <= x1 + 0.05 * w and d["y"] >= 0.80 * h]
         cand_p4 = sorted(cand_p4, key=lambda d: -d["y"])
         p4 = cand_p4[0] if cand_p4 else None
         x4, y4 = (p4["x"], p4["y"]) if p4 else (max(0.04 * w, x0 + 0.08 * w), 0.91 * h)
 
-        # P7: Right-Front Base (Deepest floor point on right in Band D)
-        cand_p7 = [d for d in band_d if d["x"] >= x6 and d["y"] >= 0.82 * h]
+        # P7: Right-Front Floor Base (Deepest floor point on right in Band D)
+        cand_p7 = [d for d in band_d if d["x"] >= x2 - 0.05 * w and d["y"] >= 0.80 * h]
         cand_p7 = sorted(cand_p7, key=lambda d: -d["y"])
         p7 = cand_p7[0] if cand_p7 else None
         x7, y7 = (p7["x"], p7["y"]) if p7 else (min(0.96 * w, x3 - 0.08 * w), 0.91 * h)
+
+        # 6. Perspective Ledge Ray Projection for P5 and P6
+        y5_target = min(y4 - 0.05 * h, y_base_target)
+        y6_target = min(y7 - 0.05 * h, y_base_target)
+
+        denom_l = vp_y - y4
+        x5_proj = x4 + (y5_target - y4) * (vp_x - x4) / denom_l if abs(denom_l) > 1e-3 else x1
+        denom_r = vp_y - y7
+        x6_proj = x7 + (y6_target - y7) * (vp_x - x7) / denom_r if abs(denom_r) > 1e-3 else x2
+
+        # Ray equations for perpendicular distance
+        A_l, B_l, C_l = (vp_y - y4), -(vp_x - x4), (vp_x * y4 - vp_y * x4)
+        norm_l = max(1e-3, math.hypot(A_l, B_l))
+        A_r, B_r, C_r = (vp_y - y7), -(vp_x - x7), (vp_x * y7 - vp_y * x7)
+        norm_r = max(1e-3, math.hypot(A_r, B_r))
+
+        header_angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+
+        # Evaluate candidate pairs (p5, p6) in Band C
+        cand_p5_pool = [d for d in band_c if d["x"] < x2 - 0.10 * w and d["y"] < y4]
+        cand_p6_pool = [d for d in band_c if d["x"] > x1 + 0.10 * w and d["y"] < y7]
+
+        best_pair = None
+        best_cost = float("inf")
+
+        for d5 in cand_p5_pool:
+            dist_l = abs(A_l * d5["x"] + B_l * d5["y"] + C_l) / norm_l
+            for d6 in cand_p6_pool:
+                if d6["x"] <= d5["x"] + 0.15 * w:
+                    continue
+                dist_r = abs(A_r * d6["x"] + B_r * d6["y"] + C_r) / norm_r
+                pair_angle = math.degrees(math.atan2(d6["y"] - d5["y"], d6["x"] - d5["x"]))
+                angle_diff = abs(pair_angle - header_angle)
+
+                cost = dist_l * 1.0 + dist_r * 1.0 + angle_diff * 15.0 + abs(d5["y"] - d6["y"]) * 0.5
+                if cost < best_cost:
+                    best_cost = cost
+                    best_pair = (d5, d6)
+
+        p5_match = None
+        p6_match = None
+        if best_pair is not None and best_cost < 250.0:
+            p5_match, p6_match = best_pair
+            x5, y5 = p5_match["x"], p5_match["y"]
+            x6, y6 = p6_match["x"], p6_match["y"]
+        else:
+            x5, y5 = x5_proj, y5_target
+            x6, y6 = x6_proj, y6_target
 
         landmarks["outer_left_x"] = round(x0, 1)
         landmarks["back_left_crease_x"] = round(x1, 1)
@@ -193,6 +254,6 @@ class AlcoveBathSolver(BasePresetSolver):
             [x7, y7],  # 7: Right-Front Bottom (Front curb / tub skirt)
         ]
 
-        matched_count = sum(1 for p in (p0, p1, p2, p3, p4, p5, p6, p7) if p is not None)
+        matched_count = sum(1 for p in (p0, p1, p2, p3, p4, p5_match, p6_match, p7) if p is not None)
         confidence = round(0.60 + (matched_count / 8.0) * 0.35, 2)
         return points, confidence, landmarks

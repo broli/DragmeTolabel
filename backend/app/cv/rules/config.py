@@ -24,7 +24,9 @@ class CVRuleConfig:
     max_crease_shear_ratio: float = 0.08
 
     # --- Statement 3: Showerpan / Tub Base & Floor Clutter ---
-    tub_to_floor_min_offset_ratio: float = 0.06
+    tub_to_floor_min_offset_ratio: float = 0.04
+    min_tub_apron_drop_ratio: float = 0.10          # Threshold distinguishing bathtub from low shower pan
+    min_pan_apron_drop_ratio: float = 0.02          # Minimum drop for low shower pan curb
     floor_drain_y_min_ratio: float = 0.92
     floor_drain_x_min_ratio: float = 0.35
     floor_drain_x_max_ratio: float = 0.65
@@ -34,9 +36,11 @@ class CVRuleConfig:
     band_ceiling_y_max_ratio: float = 0.16
     band_header_y_min_ratio: float = 0.12
     band_header_y_max_ratio: float = 0.35
-    band_tub_rim_y_min_ratio: float = 0.58
-    band_tub_rim_y_max_ratio: float = 0.76
-    band_floor_y_min_ratio: float = 0.78
+    band_tub_rim_y_min_ratio: float = 0.55
+    band_tub_rim_y_max_ratio: float = 0.78
+    band_shower_pan_y_min_ratio: float = 0.78
+    band_shower_pan_y_max_ratio: float = 0.94
+    band_floor_y_min_ratio: float = 0.82
     band_floor_y_max_ratio: float = 0.98
 
     # --- Statement 5: Hardware Deadband (Fixtures) ---
