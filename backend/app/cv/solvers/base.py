@@ -110,6 +110,7 @@ class BasePresetSolver(ABC):
                 "image_width": w,
                 "image_height": h,
                 "detected_lines_count": len(lines),
+                "lines": lines,
                 "landmarks": landmarks,
                 "confidence_score": round(confidence, 3),
                 "normalized_points": [[round(p[0] / w, 4), round(p[1] / h, 4)] for p in clamped_points],
