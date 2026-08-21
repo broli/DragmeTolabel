@@ -1,4 +1,4 @@
-.PHONY: help setup dev test lint format check
+.PHONY: help setup dev test lint format check audit
 
 PYTHON ?= $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; else which python3; fi)
 PYTEST ?= $(shell if [ -f .venv/bin/pytest ]; then echo .venv/bin/pytest; else which pytest; fi)
@@ -18,11 +18,14 @@ dev:  ## Start the FastAPI development server
 test:  ## Run pytest test suite
 	$(PYTEST) -v tests/
 
+audit:  ## Run CV diagnostic audit and generate dated comparison reports
+	$(PYTHON) tools/run_audit.py
+
 lint:  ## Run ruff linter checks
-	$(RUFF) check backend/ tests/
+	$(RUFF) check backend/ tests/ tools/
 
 format:  ## Format and fix code with ruff
-	$(RUFF) format backend/ tests/
-	$(RUFF) check --fix backend/ tests/
+	$(RUFF) format backend/ tests/ tools/
+	$(RUFF) check --fix backend/ tests/ tools/
 
 check: lint test  ## Run all linting and test checks

@@ -15,3 +15,8 @@
 
 # Legacy archive
 /_legacy_archive/
+
+# Generated CV diagnostic audit runs
+/docs/reports/cv_diagnostics/run_*
+/docs/reports/cv_diagnostics/latest
+
