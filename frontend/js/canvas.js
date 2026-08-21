@@ -11,12 +11,15 @@ export class PolygonCanvas {
     this.onPointsChanged = onPointsChanged;
 
     this.image = null;
+    this.heatmapImage = null;
+    this.showHeatmap = false;
     this.imageWidth = 0;
     this.imageHeight = 0;
 
     this.preset = null;
     this.points = []; // Pixel coordinates [[x, y], ...]
     this.history = [];
+    this.cvPoints = []; // Stored CV detected points for accuracy comparison
 
     // Interaction state
     this.dragMode = null; // 'vertex' | 'polygon' | null
@@ -81,6 +84,7 @@ export class PolygonCanvas {
   setCustomPoints(points, recordHistory = true) {
     if (!this.image || !points || !points.length) return;
     this.points = JSON.parse(JSON.stringify(points));
+    this.cvPoints = JSON.parse(JSON.stringify(points));
     if (recordHistory) {
       this.saveHistory();
     }
@@ -88,6 +92,28 @@ export class PolygonCanvas {
       this.onPointsChanged(this.points);
     }
     this.render();
+  }
+
+  setHeatmapImage(imgSrc) {
+    if (!imgSrc) {
+      this.heatmapImage = null;
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      this.heatmapImage = img;
+      if (this.showHeatmap) {
+        this.render();
+      }
+    };
+    img.src = imgSrc;
+  }
+
+  toggleHeatmap(show = null) {
+    this.showHeatmap = (show !== null) ? show : !this.showHeatmap;
+    this.render();
+    return this.showHeatmap;
   }
 
   resetPoints() {
@@ -310,8 +336,12 @@ export class PolygonCanvas {
 
     ctx.clearRect(0, 0, displayW, displayH);
 
-    // 1. Draw original photo
-    ctx.drawImage(this.image, 0, 0, displayW, displayH);
+    // 1. Draw original photo or heatmap overlay
+    if (this.showHeatmap && this.heatmapImage) {
+      ctx.drawImage(this.heatmapImage, 0, 0, displayW, displayH);
+    } else if (this.image) {
+      ctx.drawImage(this.image, 0, 0, displayW, displayH);
+    }
 
     if (!this.points.length || !this.preset) return;
 

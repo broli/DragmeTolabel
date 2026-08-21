@@ -156,7 +156,11 @@ class DragmeToLabelApp {
 
       const result = await autoFitPreset(imgBase64, targetPresetId);
       if (result && result.success && result.points && result.points.length > 0) {
+        this.lastAutoFitResult = result;
         this.canvas.setCustomPoints(result.points);
+        if (result.heatmap_base64) {
+          this.canvas.setHeatmapImage(result.heatmap_base64);
+        }
         if (!silent) {
           const confPct = Math.round((result.confidence || 0.8) * 100);
           this.showToast(`✨ Auto-aligned ${this.activePresetId} corners (${confPct}% confidence)`);
@@ -387,6 +391,10 @@ class DragmeToLabelApp {
 
     // 8. Demo Room Samples (Both in Onboarding modal and in Header dropdown)
     const sampleMap = {
+      sample_alan_fukuda: {
+        url: '/assets/samples/alan_fukuda_bath.jpg',
+        preset: 'alcove_bath',
+      },
       sample_bathroom_alcove: {
         url: '/assets/samples/sample_alcove_bath.jpg',
         preset: 'alcove_bath',
@@ -454,7 +462,36 @@ class DragmeToLabelApp {
       });
     }
 
-    // 12. Preview Action in Header
+    // 12. Heatmap Overlay Toggle Action in Header
+    const btnToggleHeatmap = document.getElementById('btn-toggle-heatmap');
+    if (btnToggleHeatmap) {
+      btnToggleHeatmap.addEventListener('click', () => {
+        this.toggleHeatmapMode();
+      });
+    }
+
+    // 13. Compare CV / Accuracy Calibration Action in Header
+    const btnCalibrate = document.getElementById('btn-calibrate-cv');
+    if (btnCalibrate) {
+      btnCalibrate.addEventListener('click', () => {
+        this.showCalibrationModal();
+      });
+    }
+
+    // 14. Calibration Modal Close Handlers
+    const btnCloseCalib = document.getElementById('btn-close-calibration');
+    const calibBackdrop = document.getElementById('calibration-modal-backdrop');
+    const btnDoneCalib = document.getElementById('btn-done-calibration');
+    [btnCloseCalib, calibBackdrop, btnDoneCalib].forEach((el) => {
+      if (el) el.addEventListener('click', () => this.hideCalibrationModal());
+    });
+
+    const btnCopyCalibJson = document.getElementById('btn-copy-calibration-json');
+    if (btnCopyCalibJson) {
+      btnCopyCalibJson.addEventListener('click', () => this.copyCalibrationJson());
+    }
+
+    // 15. Preview Action in Header
     const btnPreview = document.getElementById('btn-preview');
     if (btnPreview) {
       btnPreview.addEventListener('click', () => {
@@ -462,7 +499,7 @@ class DragmeToLabelApp {
       });
     }
 
-    // 13. Export Action in Header
+    // 16. Export Action in Header
     const btnExport = document.getElementById('btn-export-json');
     if (btnExport) {
       btnExport.addEventListener('click', () => {
@@ -543,6 +580,123 @@ class DragmeToLabelApp {
     } catch (err) {
       this.showToast(err.message || 'Export failed.');
     }
+  }
+
+  toggleHeatmapMode() {
+    if (!this.hasLoadedImage) {
+      this.showToast('Please load a photo first to view CV Heatmap.');
+      return;
+    }
+    const isHeatmap = this.canvas.toggleHeatmap();
+    const btn = document.getElementById('btn-toggle-heatmap');
+    if (btn) {
+      if (isHeatmap) {
+        btn.classList.add('btn-active-glow');
+        this.showToast('🔥 CV Gradient Energy Heatmap: ON');
+      } else {
+        btn.classList.remove('btn-active-glow');
+        this.showToast('Photo View: Standard');
+      }
+    }
+  }
+
+  showCalibrationModal() {
+    if (!this.hasLoadedImage) {
+      this.showToast('Please load a photo first to run accuracy comparison.');
+      return;
+    }
+
+    const manualPoints = this.canvas.getPoints();
+    const cvPoints = (this.canvas.cvPoints && this.canvas.cvPoints.length === manualPoints.length)
+      ? this.canvas.cvPoints
+      : manualPoints;
+
+    if (!manualPoints.length) {
+      this.showToast('No active points on canvas.');
+      return;
+    }
+
+    let totalDist = 0;
+    let maxDist = 0;
+    const tableBody = document.getElementById('calibration-table-body');
+    if (tableBody) tableBody.innerHTML = '';
+
+    manualPoints.forEach(([mx, my], idx) => {
+      const [cx, cy] = cvPoints[idx] || [mx, my];
+      const dx = mx - cx;
+      const dy = my - cy;
+      const dist = Math.hypot(dx, dy);
+
+      totalDist += dist;
+      if (dist > maxDist) maxDist = dist;
+
+      if (tableBody) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>Pt ${idx}</strong></td>
+          <td>(${mx.toFixed(1)}, ${my.toFixed(1)})</td>
+          <td>(${cx.toFixed(1)}, ${cy.toFixed(1)})</td>
+          <td>ΔX: ${dx >= 0 ? '+' : ''}${dx.toFixed(1)}, ΔY: ${dy >= 0 ? '+' : ''}${dy.toFixed(1)}</td>
+          <td><span style="font-weight:600; color:${dist < 15 ? '#10b981' : dist < 40 ? '#f59e0b' : '#ef4444'}">${dist.toFixed(1)} px</span></td>
+        `;
+        tableBody.appendChild(tr);
+      }
+    });
+
+    const mae = totalDist / manualPoints.length;
+    // Accuracy score relative to a tolerance radius of 150px
+    const accuracyPct = Math.max(0, Math.min(100, 100 - (mae / 1.5))).toFixed(1);
+
+    const accEl = document.getElementById('calib-accuracy-val');
+    const maeEl = document.getElementById('calib-mae-val');
+    const maxEl = document.getElementById('calib-max-err-val');
+
+    if (accEl) {
+      accEl.textContent = `${accuracyPct}%`;
+      accEl.className = `calib-stat-value ${accuracyPct > 90 ? 'high-acc' : accuracyPct > 75 ? 'mid-acc' : 'low-acc'}`;
+    }
+    if (maeEl) maeEl.textContent = `${mae.toFixed(1)} px`;
+    if (maxEl) maxEl.textContent = `${maxDist.toFixed(1)} px`;
+
+    // Store for clipboard export
+    this.currentCalibrationReport = {
+      timestamp: new Date().toISOString(),
+      preset_id: this.activePresetId,
+      image_source: this.currentSamplePhoto || 'user_upload',
+      image_dimensions: { width: this.canvas.imageWidth, height: this.canvas.imageHeight },
+      metrics: {
+        accuracy_percentage: parseFloat(accuracyPct),
+        mean_absolute_error_px: parseFloat(mae.toFixed(2)),
+        max_point_error_px: parseFloat(maxDist.toFixed(2)),
+      },
+      manual_points: manualPoints,
+      cv_autofit_points: cvPoints,
+      detected_landmarks: this.lastAutoFitResult?.landmarks || {},
+    };
+
+    const modal = document.getElementById('calibration-modal-overlay');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+  }
+
+  hideCalibrationModal() {
+    const modal = document.getElementById('calibration-modal-overlay');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+  }
+
+  copyCalibrationJson() {
+    if (!this.currentCalibrationReport) return;
+    const jsonStr = JSON.stringify(this.currentCalibrationReport, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      this.showToast('📋 Copied Calibration JSON to clipboard!');
+    }).catch(() => {
+      this.showToast('Failed to copy to clipboard.');
+    });
   }
 
   showToast(message) {
