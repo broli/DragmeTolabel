@@ -91,10 +91,18 @@ def run_audit(
 
         score = rule_eval.get("composite_score", res.confidence)
         is_valid = rule_eval.get("is_valid", True)
-        back_aspect = rule_eval.get("rule_results", {}).get("aspect_ratio", {}).get("details", {}).get("aspect_ratio", 0.0)
+        back_aspect = 0.0
+        if len(res.points) >= 8:
+            bw = abs(res.points[2][0] - res.points[1][0])
+            bh = abs(res.points[5][1] - res.points[1][1])
+            back_aspect = round(bw / max(1.0, bh), 2)
 
         kept_count = sum(1 for c in candidates if c.get("status") == "KEPT")
         discarded_count = sum(1 for c in candidates if c.get("status") == "DISCARDED")
+        deadband_count = sum(1 for c in candidates if "Hardware Deadband" in c.get("discard_reason", ""))
+        elevation_gap_count = sum(1 for c in candidates if "Elevation gap" in c.get("discard_reason", ""))
+        floor_drain_count = sum(1 for c in candidates if ("Floor Drain" in c.get("discard_reason", "") or "Clutter" in c.get("discard_reason", "")))
+        out_of_bounds_count = sum(1 for c in candidates if "Outside" in c.get("discard_reason", ""))
 
         print(
             f"  [PROCESSED] {photo_path.name:<32} | Dots: {len(candidates):<4} | Score: {score:.2f}  -> {out_img_name}"
@@ -109,6 +117,12 @@ def run_audit(
                 "total_candidates": len(candidates),
                 "kept_candidates": kept_count,
                 "discarded_candidates": discarded_count,
+                "discard_breakdown": {
+                    "deadband": deadband_count,
+                    "elevation_gap": elevation_gap_count,
+                    "floor_drain": floor_drain_count,
+                    "out_of_bounds": out_of_bounds_count,
+                },
                 "back_wall_aspect": back_aspect,
                 "composite_score": score,
                 "is_valid": is_valid,
@@ -175,6 +189,22 @@ def generate_markdown_report(run_dir: Path, timestamp: str, results: list[dict[s
             f"| {r['photo_name']} | {r['width']}x{r['height']} | {r['lines_count']} | {r['total_candidates']} | "
             f"{r['kept_candidates']} | {r['discarded_candidates']} | {r['back_wall_aspect']:.2f} | {gt_err_str} | "
             f"{r['composite_score']:.2f} | {valid_str} |"
+        )
+
+    lines.extend([
+        "",
+        "## Discard Reasons Breakdown",
+        "",
+        "| Photo Name | Total Dots | Kept (Green) | Deadband (Red X) | Elev Gap (Orange X) | Floor Drain (Magenta X) | Out of Bounds |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+    ])
+
+    for r in results:
+        bd = r.get("discard_breakdown", {})
+        lines.append(
+            f"| {r['photo_name']} | {r['total_candidates']} | {r['kept_candidates']} | "
+            f"{bd.get('deadband', 0)} | {bd.get('elevation_gap', 0)} | {bd.get('floor_drain', 0)} | "
+            f"{bd.get('out_of_bounds', 0)} |"
         )
 
     lines.extend([

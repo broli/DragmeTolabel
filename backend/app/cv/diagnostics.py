@@ -124,21 +124,41 @@ def render_solver_diagnostic_composite(
             cv2.line(p2, (0, y_s), (dw, y_s), (100, 120, 100), 1, cv2.LINE_AA)
             cv2.putText(p2, label, (dw - 110, y_s - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 150, 120), 1)
 
-    # Plot Kept and Discarded Candidate Dots
+    # Plot Kept and Discarded Candidate Dots with Rule Color-Coding
     kept_count = 0
     discarded_count = 0
+    reason_counts: dict[str, int] = {}
+
     for dot in candidates:
         cx, cy = int(dot["x"] * scale), int(dot["y"] * scale)
         if 0 <= cx < dw and 0 <= cy < dh:
             if dot.get("status") == "DISCARDED":
                 discarded_count += 1
+                reason = dot.get("discard_reason", "")
                 r = 4
-                cv2.line(p2, (cx - r, cy - r), (cx + r, cy + r), (0, 0, 240), 1)
-                cv2.line(p2, (cx - r, cy + r), (cx + r, cy - r), (0, 0, 240), 1)
+
+                # Color-code discard reasons:
+                if "Hardware Deadband" in reason:
+                    color = (0, 0, 255)  # Red: Hardware Deadband
+                    tag = "Deadband"
+                elif "Elevation gap" in reason:
+                    color = (0, 140, 255)  # Orange: Elevation Gap (floating between bands)
+                    tag = "ElevationGap"
+                elif "Floor Drain" in reason or "Clutter" in reason:
+                    color = (255, 0, 255)  # Magenta: Floor Drain / Clutter
+                    tag = "FloorClutter"
+                else:
+                    color = (180, 180, 180)  # Gray: Outside boundary / other
+                    tag = "Other"
+
+                reason_counts[tag] = reason_counts.get(tag, 0) + 1
+                cv2.line(p2, (cx - r, cy - r), (cx + r, cy + r), color, 1, cv2.LINE_AA)
+                cv2.line(p2, (cx - r, cy + r), (cx + r, cy - r), color, 1, cv2.LINE_AA)
             elif dot.get("status") == "KEPT":
                 kept_count += 1
                 cv2.circle(p2, (cx, cy), 3, (0, 240, 100), -1)
 
+    # Top Header Bar
     cv2.rectangle(p2, (0, 0), (dw, 32), (30, 30, 30), -1)
     cv2.putText(
         p2,
@@ -147,6 +167,18 @@ def render_solver_diagnostic_composite(
         cv2.FONT_HERSHEY_SIMPLEX,
         0.52,
         (255, 255, 255),
+        1,
+    )
+
+    # Bottom Legend Bar
+    cv2.rectangle(p2, (0, dh - 26), (dw, dh), (20, 20, 20), -1)
+    cv2.putText(
+        p2,
+        "Legend: [O] Kept | [X Red] Deadband | [X Orange] Elev Gap | [X Magenta] Floor Drain",
+        (8, dh - 8),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.36,
+        (200, 200, 200),
         1,
     )
 
