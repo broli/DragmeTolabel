@@ -61,6 +61,8 @@ def export_to_labelme_json(
         "imageData": image_data_base64,
         "imageHeight": image_height,
         "imageWidth": image_width,
+        "preset_id": preset_id,
+        "points": points,
     }
 
     return labelme_dict

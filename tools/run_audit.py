@@ -283,6 +283,23 @@ def run_audit(
         out_img_name = f"audit_{photo_path.stem}.jpg"
         out_img_path = str(run_dir / out_img_name)
 
+        # Check for ground-truth JSON annotation
+        json_path = photo_path.with_suffix(".json")
+        gt_mean_error = None
+        if json_path.exists():
+            try:
+                with open(json_path) as f:
+                    gt_data = json.load(f)
+                    gt_points = gt_data.get("points")
+                    if gt_points and len(gt_points) == len(res.points):
+                        errors = [
+                            math.hypot(res.points[i][0] - gt_points[i][0], res.points[i][1] - gt_points[i][1])
+                            for i in range(len(gt_points))
+                        ]
+                        gt_mean_error = round(sum(errors) / len(errors), 1)
+            except Exception:
+                pass
+
         metrics = create_multi_panel_diagnostic(
             img_bgr=img,
             lines=lines,
@@ -295,10 +312,10 @@ def run_audit(
             photo_name=photo_path.name,
             output_path=out_img_path,
         )
+        metrics["gt_mean_error_px"] = gt_mean_error
         audit_results.append(metrics)
-        print(
-            f"  [PROCESSED] {photo_path.name:<35} | Dots: {len(evaluated_candidates):<4} | Score: {rule_eval.get('composite_score', 0.0):.2f} -> {out_img_name}"
-        )
+        gt_str = f"| GT Err: {gt_mean_error:.1f}px" if gt_mean_error is not None else ""
+        print(f"  [PROCESSED] {photo_path.name:<35} | Dots: {len(evaluated_candidates):<4} | Score: {rule_eval.get('composite_score', 0.0):.2f} {gt_str} -> {out_img_name}")
 
     # 1. Save summary metrics JSON
     metrics_path = run_dir / "summary_metrics.json"
@@ -312,14 +329,15 @@ def run_audit(
         f.write(f"- **Timestamp**: `{timestamp}`\n")
         f.write(f"- **Total Photos Audited**: `{len(audit_results)}`\n\n")
         f.write("## Summary Table\n\n")
-        f.write("| Photo Name | Dimensions | Lines | Candidates | Kept | Discarded | Back Aspect | Score | Valid |\n")
-        f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+        f.write("| Photo Name | Dimensions | Lines | Candidates | Kept | Discarded | Back Aspect | GT Mean Err | Score | Valid |\n")
+        f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
         for r in audit_results:
             reval = r.get("rule_evaluation", {})
+            gt_err_str = f"{r['gt_mean_error_px']:.1f} px" if r.get("gt_mean_error_px") is not None else "N/A"
             f.write(
                 f"| {r['photo_name']} | {r['width']}x{r['height']} | {r['raw_lines']} | "
                 f"{r['total_candidates']} | {r['kept_candidates']} | {r['discarded_candidates']} | "
-                f"{r['back_wall_aspect']} | {reval.get('composite_score', 0.0):.2f} | "
+                f"{r['back_wall_aspect']} | {gt_err_str} | {reval.get('composite_score', 0.0):.2f} | "
                 f"{'YES' if reval.get('is_valid', True) else 'NO'} |\n"
             )
         f.write("\n## Generated Diagnostic Images\n\n")
